@@ -1192,103 +1192,18 @@ async function startVoiceSession() {
         disconnectRetryCount = 0; // Reset retry count on successful connection
         lastConnectionTime = Date.now();
         
-        // [FIX] Setup Media Stream - SDK manages its own stream, we just ensure ours is available
-        try {
-          // The SDK should have its own stream, but we keep our permission stream as backup
-          // DO NOT stop the permission stream - the SDK might be using it or need it as fallback
-          
-          // Try to get the SDK's stream for mute/unmute control
-          if (conversation && typeof conversation.getLocalStream === 'function') {
-            const localStream = conversation.getLocalStream();
-            if (localStream && localStream.active) {
-              // Verify SDK stream is fully active
-              const sdkTracks = localStream.getAudioTracks();
-              const liveSdkTracks = sdkTracks.filter(t => t.readyState === 'live');
-              
-              if (liveSdkTracks.length > 0) {
-                console.log('✅ SDK stream is active and ready');
-                // Use SDK stream for mute control, but DON'T stop our permission stream
-                // The SDK might be using it or need it as a fallback
-                userMediaStream = localStream; // Update reference for mute control
-                // Ensure tracks are enabled
-                localStream.getAudioTracks().forEach(track => {
-                  track.enabled = !isMicMuted;
-                  console.log(`🎤 SDK track enabled: ${track.enabled}, label: ${track.label}, state: ${track.readyState}`);
-                });
-              } else {
-                console.warn('⚠️ SDK stream exists but tracks not live yet, keeping permission stream active');
-                // Keep both streams active - don't stop anything
-                if (userMediaStream && userMediaStream.active) {
-                  userMediaStream.getAudioTracks().forEach(track => {
-                    track.enabled = !isMicMuted;
-                  });
-                }
-              }
-            } else {
-              console.log('ℹ️ SDK stream not available yet, using permission stream (this is normal)');
-              // SDK will request its own stream - keep our permission stream active
-              if (userMediaStream && userMediaStream.active) {
-                userMediaStream.getAudioTracks().forEach(track => {
-                  track.enabled = !isMicMuted;
-                });
-              }
-            }
-          } else {
-            console.log('ℹ️ Using permission stream (SDK will manage its own)');
-            // Fallback: use our permission stream - SDK will handle its own
-            if (userMediaStream && userMediaStream.active) {
-              userMediaStream.getAudioTracks().forEach(track => {
-                track.enabled = !isMicMuted;
-              });
-            }
-          }
-        } catch (e) {
-          console.error('❌ Error setting up media stream:', e);
-          // Keep permission stream active - never stop it during connection
-          if (userMediaStream && userMediaStream.active) {
-            userMediaStream.getAudioTracks().forEach(track => {
-              track.enabled = !isMicMuted;
-            });
-          }
-        }
-        
-        // Verify microphone is actually working
-        if (userMediaStream) {
-          if (!userMediaStream.active) {
-            console.error('❌ Microphone stream is not active! Bot will not hear you.');
-            updateStatus('⚠️ Microphone stream inactive - check browser permissions', 'default');
-          } else {
-            const tracks = userMediaStream.getAudioTracks();
-            const activeTracks = tracks.filter(t => t.readyState === 'live' && t.enabled && t.readyState === 'live');
-            console.log(`🎤 Microphone status: ${activeTracks.length} active track(s) out of ${tracks.length} total`);
-            if (activeTracks.length === 0) {
-              console.error('❌ No active microphone tracks! Bot will not hear you.');
-              updateStatus('⚠️ Microphone not active - check browser permissions', 'default');
-            }
-          }
-        } else {
-          console.error('❌ No microphone stream available! Bot will not hear you.');
-          updateStatus('⚠️ Microphone not available - check browser permissions', 'default');
+        // [FIX] Simplified Stream Management
+        // Just log status, don't mess with streams aggressively
+        console.log('✅ Connection established');
+
+        if (userMediaStream && userMediaStream.active) {
+             console.log('🎤 Permission stream active');
         }
         
         updateMicButtonState(false);
         
         if (window.micMuteInterval) clearInterval(window.micMuteInterval);
-        window.micMuteInterval = setInterval(() => {
-          if (sessionActive && isMicMuted && userMediaStream) {
-            userMediaStream.getAudioTracks().forEach(track => {
-              track.enabled = false;
-            });
-          } else if (sessionActive && !isMicMuted && userMediaStream) {
-            // Ensure tracks stay enabled when unmuted
-            userMediaStream.getAudioTracks().forEach(track => {
-              if (track.readyState === 'live') {
-                track.enabled = true;
-              }
-            });
-          }
-        }, 2000);
-
+        
         // [PRODUCTION FIX] Start connection health monitoring
         startConnectionHealthCheck();
 
@@ -1303,16 +1218,6 @@ async function startVoiceSession() {
         // Initial Status
         updateStatus('Connected', 'default');
         setTimeout(() => { toggleVoiceVisuals('listening'); }, 100);
-        
-        // [FIX] Ensure turn detection is enabled on connect
-        if (conversation) {
-          try {
-            conversation.setConversationTurnDetection({ enabled: true });
-            console.log('✅ Turn detection enabled on connection');
-          } catch (e) {
-            console.warn('⚠️ Could not enable turn detection:', e);
-          }
-        }
         
         startTimer();
         startTalkTimeTracking();
