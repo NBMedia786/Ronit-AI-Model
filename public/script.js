@@ -640,9 +640,43 @@ async function requestMicrophonePermission() {
       throw new Error('getUserMedia is not supported in this browser. Please use Chrome, Firefox, or Edge.');
     }
 
+    // [FIX] Check if permission is already granted before requesting
+    let permissionStatus = 'prompt';
+    try {
+      if (navigator.permissions && navigator.permissions.query) {
+        const result = await navigator.permissions.query({ name: 'microphone' });
+        permissionStatus = result.state;
+        console.log('🎤 Current microphone permission status:', permissionStatus);
+        
+        // If already granted, we can proceed without prompting
+        if (permissionStatus === 'granted') {
+          console.log('✅ Microphone permission already granted - will access without prompt');
+        } else if (permissionStatus === 'denied') {
+          throw new Error('Microphone permission was denied. Please enable it in browser settings.');
+        }
+      }
+    } catch (permErr) {
+      // Permissions API might not be supported, continue with getUserMedia
+      console.log('⚠️ Permissions API not available, will check via getUserMedia');
+    }
+
+    // [FIX] Check if we already have an active stream
+    if (userMediaStream) {
+      const activeTracks = userMediaStream.getAudioTracks().filter(t => t.readyState === 'live');
+      if (activeTracks.length > 0) {
+        console.log('✅ Reusing existing microphone stream');
+        return true;
+      }
+    }
+
     // [FIX] Request permission to unlock browser permissions
     // We'll keep a minimal stream alive until SDK connects, then release it
-    console.log('🎤 Requesting microphone permission...');
+    if (permissionStatus === 'granted') {
+      console.log('🎤 Permission already granted, accessing microphone...');
+    } else {
+      console.log('🎤 Requesting microphone permission...');
+    }
+    
     const constraints = {
       audio: {
         echoCancellation: true,
@@ -651,6 +685,7 @@ async function requestMicrophonePermission() {
       }
     };
     
+    // This will not prompt if permission is already granted
     const stream = await navigator.mediaDevices.getUserMedia(constraints);
     
     // Check if we actually got audio tracks
