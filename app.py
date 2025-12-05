@@ -142,6 +142,10 @@ else:
 @app.after_request
 def set_security_headers(response):
     """Add security headers to all responses."""
+    # CRITICAL: Allow microphone access for all origins (including CDN scripts like 11Labs SDK)
+    # This prevents blocking when there are HTTP→HTTPS or www→non-www redirects
+    response.headers['Permissions-Policy'] = 'microphone=*, camera=(), geolocation=()'
+    
     if Config.ENVIRONMENT == "production":
         response.headers['X-Content-Type-Options'] = 'nosniff'
         response.headers['X-Frame-Options'] = 'DENY'
