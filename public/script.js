@@ -354,18 +354,18 @@ document.addEventListener('DOMContentLoaded', () => {
       sessionStorage.setItem('userEmail', email);
       sessionStorage.setItem('userName', name); // Use email prefix as name
 
-      // Simulate Loading Bar
+      // [FIX] Start immediately to preserve User Gesture for Audio/Mic
       console.log('📞 Starting call process...');
-      let width = 0;
-      const loadInt = setInterval(() => {
-        width += 5;
-        if (loadingBar) loadingBar.style.width = width + '%';
-        if (width >= 100) {
-          clearInterval(loadInt);
-          console.log('✅ Loading complete, starting voice session...');
-          startVoiceSession(); // Actually start the call
-        }
-      }, 50); // Fast load simulation
+      
+      // Fill loading bar visually (optional)
+      if (loadingBar) {
+          loadingBar.style.transition = 'width 0.5s ease';
+          loadingBar.style.width = '100%'; 
+      }
+
+      // CALL IMMEDIATELY - Do not wait for a timer!
+      // This allows the browser to grant microphone/audio permissions.
+      startVoiceSession();
     });
   }
 
@@ -631,14 +631,9 @@ async function requestMicrophonePermission() {
       throw new Error('getUserMedia is not supported in this browser. Please use Chrome, Firefox, or Edge.');
     }
 
-    // Request microphone permission with detailed constraints
+    // Request microphone permission - simplified to let browser handle everything
     const constraints = {
-      audio: {
-        echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl: true,
-        sampleRate: 44100
-      }
+      audio: true // Let the browser handle EVERYTHING auto-magically
     };
 
     console.log('🎤 Requesting microphone permission...');
@@ -860,6 +855,21 @@ function enforceMicMuteState() {
 }
 
 async function startVoiceSession() {
+  // ---------------------------------------------------------
+  // [FIX] Wake up Audio Context immediately on user click
+  // This prevents the browser from blocking audio due to network delay
+  try {
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    if (AudioContext) {
+      const ctx = new AudioContext();
+      await ctx.resume();
+      ctx.close(); // Clean up immediately
+    }
+  } catch (e) {
+    console.warn("AudioContext wake-up failed", e);
+  }
+  // ---------------------------------------------------------
+
   userTranscript = "";
   timeRemaining = 180;
   totalTalkTime = 0;
@@ -964,11 +974,8 @@ async function startVoiceSession() {
             temperature: 0.5 
           },
           firstMessage: "Hello, I am Ronit. How can I help you today?" // Pre-caching the first message
-        },
-        tts: {
-          // Ensure we are using the lowest latency model version
-          model_id: "eleven_turbo_v2_5" 
         }
+        // tts block removed entirely - let Agent use its native, correct model
       },
 
       // 1. SMART LATENCY TRIGGER (The Alternate Fix)

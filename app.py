@@ -32,6 +32,7 @@ import requests
 from requests.adapters import HTTPAdapter, Retry
 from supabase import create_client, Client
 from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 # Load environment variables
 load_dotenv()
@@ -113,6 +114,9 @@ DATA_DIR.mkdir(exist_ok=True)
 app = Flask(__name__, static_url_path="", static_folder=str(PUBLIC_DIR))
 app.config['SECRET_KEY'] = os.getenv("SECRET_KEY", os.urandom(32).hex())
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max upload
+
+# Add ProxyFix middleware to trust headers from Caddy (1 proxy layer)
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
 
 # ===== Supabase Client Initialization =====
 supabase: Optional[Client] = None
@@ -438,10 +442,12 @@ def update_user(email: str, data: Dict[str, Any]) -> bool:
             # Update with provided data
             user_data.update(data)
             
-            # Upsert user (email is unique, so this will update if exists or insert if new)
-            supabase.table("users").upsert(user_data).execute()
+            # FIXED: Added on_conflict="email"
+            supabase.table("users").upsert(user_data, on_conflict="email").execute()
             return True
+            
         except Exception as e:
+            # THIS WAS MISSING
             logger.exception(f"Failed to update user in Supabase: {e}")
             logger.warning("Falling back to JSON file storage")
     
