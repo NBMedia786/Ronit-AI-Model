@@ -961,6 +961,31 @@ def deduct_session_time():
         "remaining": new_balance
     })
 
+@app.post("/api/user/ping")
+@limiter.limit("60 per hour")  # Allow frequent pings
+def user_ping():
+    """Update user's last_login to keep them marked as online."""
+    data = request.get_json(silent=True) or {}
+    email = (data.get("email") or "").strip().lower()
+    
+    if not email or not validate_email(email):
+        raise AppError("Valid email required", status_code=400)
+    
+    # Check if user exists
+    user = get_user(email)
+    if not user:
+        raise AppError("User not found", status_code=404)
+    
+    # Update last_login to current time (keeps user marked as online)
+    update_user(email, {
+        "last_login": datetime.now(timezone.utc).isoformat()
+    })
+    
+    return jsonify({
+        "ok": True,
+        "message": "Ping received"
+    })
+
 @app.get("/conversation-token")
 @limiter.limit("5 per minute")
 def conversation_token():

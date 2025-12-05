@@ -9,6 +9,8 @@ let timerInterval;
 let totalTalkTime = 0; // Total talk time in seconds
 let talkTimeInterval;
 let heartbeatInterval; // Server sync heartbeat interval
+let talktimeRefreshInterval; // Periodic talktime refresh interval
+let onlinePingInterval; // Periodic online status ping interval
 let talkTimeStartTime = null; // When the conversation started
 let helloPromptTimeout = null; // Timeout for auto-removing "Say Hello" prompt
 let paymentModalContext = 'start'; // 'start' or 'during'
@@ -198,6 +200,30 @@ document.addEventListener('DOMContentLoaded', () => {
   
   // Initialize and display talktime
   initializeTalktime();
+  
+  // Start periodic talktime refresh (every 30 seconds) to sync with admin updates
+  startTalktimeRefresh();
+  
+  // Force immediate refresh on page load to sync with server
+  setTimeout(() => {
+    const email = sessionStorage.getItem('userEmail');
+    if (email) {
+      fetch(`/api/user/talktime?email=${encodeURIComponent(email)}`)
+        .then(res => res.json())
+        .then(data => {
+          if (data.ok && data.talktime !== undefined) {
+            const serverTalktime = data.talktime || 0;
+            sessionStorage.setItem('userTalktime', serverTalktime.toString());
+            updateTalktimeDisplay(serverTalktime);
+            console.log(`🔄 Initial talktime sync: ${serverTalktime}s`);
+          }
+        })
+        .catch(err => console.warn('⚠️ Initial sync failed:', err));
+    }
+  }, 1000); // Wait 1 second after page load
+  
+  // Start periodic online status ping (every 60 seconds) to keep user marked as online
+  startOnlinePing();
   
   // Initialize side panel talktime display (will be updated by initializeTalktime)
   // Note: sidePanelTalktimeValue is updated in updateTalktimeDisplay function
@@ -1297,18 +1323,7 @@ async function initializeTalktime() {
   const emailInput = document.getElementById('userEmail');
   const email = emailInput ? emailInput.value?.trim() : sessionStorage.getItem('userEmail') || '';
   
-  // ONE-TIME: Add 3 minutes (180 seconds) for testing
-  const testBonusAdded = sessionStorage.getItem('testBonusAdded');
-  if (!testBonusAdded) {
-    let currentTalktime = parseInt(sessionStorage.getItem('userTalktime') || '0', 10);
-    if (isNaN(currentTalktime)) currentTalktime = 0;
-    const newTalktime = currentTalktime + 180;
-    sessionStorage.setItem('userTalktime', newTalktime.toString());
-    sessionStorage.setItem('testBonusAdded', 'true');
-    console.log('✅ Added 3 minutes (180 seconds) for testing!');
-    updateTalktimeDisplay(newTalktime);
-    return;
-  }
+  // Removed test bonus code - talktime now syncs directly from server
   
   if (!email) {
     // No email yet, use default
@@ -1321,43 +1336,37 @@ async function initializeTalktime() {
     return;
   }
   
-  // Check with backend if user is new and get talktime
+  // Check with backend and get talktime (includes welcome bonus if new user)
   try {
-    const response = await fetch('/api/user/check-welcome-bonus', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: email })
+    const response = await fetch(`/api/user/talktime?email=${encodeURIComponent(email)}`, {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' }
     });
     
     const data = await response.json();
     
     if (data.ok) {
       const talktime = data.talktime || 0;
+      // Always sync with server value (server is source of truth)
       sessionStorage.setItem('userTalktime', talktime.toString());
       
+      // Clear test bonus flag if it exists (cleanup)
+      if (sessionStorage.getItem('testBonusAdded')) {
+        sessionStorage.removeItem('testBonusAdded');
+      }
+      
       // Set initial talktime for progress bar
-      if (data.welcome_bonus_given && data.is_new) {
-        // New user - set initial to current (which includes bonus)
+      // Get initial from stored or current
+      const storedInitial = parseInt(sessionStorage.getItem('initialTalktime') || '0', 10);
+      if (storedInitial > 0) {
+        initialTalktime = storedInitial;
+      } else if (talktime > 0) {
         initialTalktime = talktime;
         sessionStorage.setItem('initialTalktime', talktime.toString());
-      } else {
-        // Existing user - get initial from stored or current
-        const storedInitial = parseInt(sessionStorage.getItem('initialTalktime') || '0', 10);
-        if (storedInitial > 0) {
-          initialTalktime = storedInitial;
-        } else if (talktime > 0) {
-          initialTalktime = talktime;
-          sessionStorage.setItem('initialTalktime', talktime.toString());
-        }
       }
       
-      // Update all talktime displays
+      // Update all talktime displays with server value
       updateTalktimeDisplay(talktime);
-      
-      // Show welcome message if bonus was given
-      if (data.welcome_bonus_given && data.is_new) {
-        console.log('🎉 Welcome bonus: 3 minutes free talktime added!');
-      }
     } else {
       // Fallback to sessionStorage
       let talktime = parseInt(sessionStorage.getItem('userTalktime') || '0', 10);
@@ -1374,6 +1383,97 @@ async function initializeTalktime() {
       talktime = 0;
     }
     updateTalktimeDisplay(talktime);
+  }
+}
+
+// Periodic talktime refresh to sync with admin updates
+function startTalktimeRefresh() {
+  // Clear any existing interval
+  if (talktimeRefreshInterval) clearInterval(talktimeRefreshInterval);
+  
+  // Refresh talktime every 30 seconds
+  talktimeRefreshInterval = setInterval(async () => {
+    const email = sessionStorage.getItem('userEmail');
+    if (!email) return; // No email, skip refresh
+    
+    try {
+      // Fetch current talktime from server
+      const response = await fetch(`/api/user/talktime?email=${encodeURIComponent(email)}`);
+      if (!response.ok) {
+        console.warn('⚠️ Failed to refresh talktime:', response.status);
+        return;
+      }
+      
+      const data = await response.json();
+      if (data.ok && data.talktime !== undefined) {
+        const serverTalktime = data.talktime || 0;
+        const currentLocalTalktime = parseInt(sessionStorage.getItem('userTalktime') || '0', 10);
+        
+        // Always sync with server value (server is source of truth)
+        // This ensures admin updates are reflected immediately
+        if (serverTalktime !== currentLocalTalktime) {
+          console.log(`🔄 Talktime refreshed: ${currentLocalTalktime}s → ${serverTalktime}s`);
+          sessionStorage.setItem('userTalktime', serverTalktime.toString());
+          
+          // Always update display to match server value
+          // During session: heartbeat handles deductions, but admin changes override
+          updateTalktimeDisplay(serverTalktime);
+          
+          // If server says 0 and we're in a session, pause it
+          if (sessionActive && serverTalktime <= 0) {
+            console.log('⛔ Server reports 0 talktime. Pausing session.');
+            pauseSessionForPayment();
+          }
+        }
+      }
+    } catch (error) {
+      console.warn('⚠️ Error refreshing talktime:', error);
+    }
+  }, 30000); // Refresh every 30 seconds
+}
+
+function stopTalktimeRefresh() {
+  if (talktimeRefreshInterval) {
+    clearInterval(talktimeRefreshInterval);
+    talktimeRefreshInterval = null;
+  }
+}
+
+// Periodic online status ping to keep user marked as online
+function startOnlinePing() {
+  // Clear any existing interval
+  if (onlinePingInterval) clearInterval(onlinePingInterval);
+  
+  // Ping server every 60 seconds to update last_login
+  onlinePingInterval = setInterval(async () => {
+    const email = sessionStorage.getItem('userEmail');
+    if (!email) return; // No email, skip ping
+    
+    try {
+      // Ping server to update last_login (keeps user marked as online)
+      const response = await fetch('/api/user/ping', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email })
+      });
+      
+      if (!response.ok) {
+        console.warn('⚠️ Failed to ping server:', response.status);
+        return;
+      }
+      
+      // Ping successful - user is now marked as online
+      console.log('💚 Online status ping sent');
+    } catch (error) {
+      console.warn('⚠️ Error pinging server:', error);
+    }
+  }, 60000); // Ping every 60 seconds (within 15 minute window)
+}
+
+function stopOnlinePing() {
+  if (onlinePingInterval) {
+    clearInterval(onlinePingInterval);
+    onlinePingInterval = null;
   }
 }
 
