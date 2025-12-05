@@ -1103,6 +1103,11 @@ async function startVoiceSession() {
     const tokenRes = await fetch('/conversation-token');
     if (!tokenRes.ok) throw new Error('Token request failed');
     const tokenData = await tokenRes.json();
+    const token = tokenData.token; // Extract token from response
+
+    if (!token) {
+      throw new Error('Token not received from server');
+    }
 
     console.log('🎙️ Starting conversation...');
     
