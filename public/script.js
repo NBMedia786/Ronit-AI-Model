@@ -1208,9 +1208,12 @@ async function startVoiceSession() {
         disconnectRetryCount = 0; // Reset retry count on successful connection
         lastConnectionTime = Date.now();
         
-        // [FIX] Setup Media Stream - SDK should have its own stream now
+        // [FIX] Setup Media Stream - SDK manages its own stream, we just ensure ours is available
         try {
-          // Try to get the SDK's stream (it should have requested its own)
+          // The SDK should have its own stream, but we keep our permission stream as backup
+          // DO NOT stop the permission stream - the SDK might be using it or need it as fallback
+          
+          // Try to get the SDK's stream for mute/unmute control
           if (conversation && typeof conversation.getLocalStream === 'function') {
             const localStream = conversation.getLocalStream();
             if (localStream && localStream.active) {
@@ -1219,20 +1222,18 @@ async function startVoiceSession() {
               const liveSdkTracks = sdkTracks.filter(t => t.readyState === 'live');
               
               if (liveSdkTracks.length > 0) {
-                console.log('✅ Using SDK stream for microphone control');
-                // Release our temporary permission stream
-                if (userMediaStream && userMediaStream !== localStream) {
-                  userMediaStream.getTracks().forEach(track => track.stop());
-                }
-                userMediaStream = localStream;
+                console.log('✅ SDK stream is active and ready');
+                // Use SDK stream for mute control, but DON'T stop our permission stream
+                // The SDK might be using it or need it as a fallback
+                userMediaStream = localStream; // Update reference for mute control
                 // Ensure tracks are enabled
                 localStream.getAudioTracks().forEach(track => {
                   track.enabled = !isMicMuted;
-                  console.log(`🎤 Audio track enabled: ${track.enabled}, label: ${track.label}, state: ${track.readyState}`);
+                  console.log(`🎤 SDK track enabled: ${track.enabled}, label: ${track.label}, state: ${track.readyState}`);
                 });
               } else {
-                console.warn('⚠️ SDK stream not fully active, keeping permission stream');
-                // Keep the permission stream if SDK stream is not ready
+                console.warn('⚠️ SDK stream exists but tracks not live yet, keeping permission stream active');
+                // Keep both streams active - don't stop anything
                 if (userMediaStream && userMediaStream.active) {
                   userMediaStream.getAudioTracks().forEach(track => {
                     track.enabled = !isMicMuted;
@@ -1240,8 +1241,8 @@ async function startVoiceSession() {
                 }
               }
             } else {
-              console.warn('⚠️ SDK stream not available or inactive, keeping permission stream');
-              // Keep the permission stream if SDK doesn't provide one
+              console.log('ℹ️ SDK stream not available yet, using permission stream (this is normal)');
+              // SDK will request its own stream - keep our permission stream active
               if (userMediaStream && userMediaStream.active) {
                 userMediaStream.getAudioTracks().forEach(track => {
                   track.enabled = !isMicMuted;
@@ -1249,8 +1250,8 @@ async function startVoiceSession() {
               }
             }
           } else {
-            console.warn('⚠️ getLocalStream not available, using permission stream');
-            // Fallback: use our permission stream
+            console.log('ℹ️ Using permission stream (SDK will manage its own)');
+            // Fallback: use our permission stream - SDK will handle its own
             if (userMediaStream && userMediaStream.active) {
               userMediaStream.getAudioTracks().forEach(track => {
                 track.enabled = !isMicMuted;
@@ -1259,7 +1260,7 @@ async function startVoiceSession() {
           }
         } catch (e) {
           console.error('❌ Error setting up media stream:', e);
-          // Keep permission stream as fallback
+          // Keep permission stream active - never stop it during connection
           if (userMediaStream && userMediaStream.active) {
             userMediaStream.getAudioTracks().forEach(track => {
               track.enabled = !isMicMuted;
