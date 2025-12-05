@@ -1,0 +1,1707 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600&family=Space+Grotesk:wght@500;700&display=swap');
+
+:root {
+  /* --- Typography --- */
+  --font-body: 'Outfit', sans-serif;
+  --font-heading: 'Space Grotesk', sans-serif;
+
+  /* --- 60-30-10 Professional Color System --- */
+  /* 60% Neutral (White/Gray) */
+  --bg-neutral: #F9FAFB;          /* Page background - Very light gray */
+  --card-white: #FFFFFF;           /* Card background - Pure white */
+  --border-light: #E5E7EB;        /* Light borders */
+  --border-input: #D1D5DB;        /* Input borders */
+  --surface-subtle: #F3F4F6;      /* Subtle gray backgrounds */
+  
+  /* 30% Secondary (Dark Gray) */
+  --text-heading: #111827;        /* Headings - Nearly black */
+  --text-secondary: #6B7280;       /* Subtext - Dark gray */
+  --text-input: #000000;          /* Input text - Black */
+  --text-feature: #374151;        /* Feature badges - Dark gray */
+  
+  /* 10% Accent (Brand Color - Deep Forest Green) */
+  --accent-primary: #065F46;       /* Deep Forest Green - Only for Call button */
+  --accent-hover: #047857;        /* Slightly lighter for hover */
+  
+  /* Legacy compatibility variables */
+  --primary: #065F46;
+  --primary-hover: #047857;
+  --accent: #065F46;
+  --primary-teal: #065F46;
+  --primary-teal-dark: #047857;
+  --primary-teal-light: #065F46;
+  --accent-gold: #065F46;
+  --accent-purple: #065F46;
+  --accent-green: #065F46;
+  --accent-orange: #065F46;
+  --white: #FFFFFF;
+  --text-dark: #111827;
+  --text-medium: #6B7280;
+  --text-light: #6B7280;
+  --gray-light: #F3F4F6;
+  --gray-border: #E5E7EB;
+  --card-bg: #FFFFFF;
+  --card-border: #E5E7EB;
+  --input-bg: #FFFFFF;
+  --input-border: #D1D5DB;
+  --font-family: 'Outfit', sans-serif;
+  
+  /* Shadows - Subtle and professional */
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+}
+
+[data-theme="dark"] {
+  /* Dark Mode - Still following 60-30-10 but adjusted */
+  --bg-neutral: #111827;
+  --card-white: #1F2937;
+  --border-light: #374151;
+  --border-input: #4B5563;
+  --surface-subtle: #374151;
+  
+  --text-heading: #F9FAFB;
+  --text-secondary: #D1D5DB;
+  --text-input: #F9FAFB;
+  --text-feature: #9CA3AF;
+  
+  --accent-primary: #10B981;
+  --accent-hover: #34D399;
+  
+  /* Legacy compatibility */
+  --primary: #10B981;
+  --primary-hover: #34D399;
+  --accent: #10B981;
+  --primary-teal: #10B981;
+  --primary-teal-dark: #047857;
+  --primary-teal-light: #34D399;
+  --accent-gold: #10B981;
+  --accent-purple: #10B981;
+  --accent-green: #10B981;
+  --accent-orange: #10B981;
+  --white: #1F2937;
+  --text-dark: #F9FAFB;
+  --text-medium: #D1D5DB;
+  --text-light: #D1D5DB;
+  --gray-light: #374151;
+  --gray-border: #4B5563;
+  --card-bg: #1F2937;
+  --card-border: #374151;
+  --input-bg: #1F2937;
+  --input-border: #4B5563;
+  
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4), 0 2px 4px -1px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.5), 0 4px 6px -2px rgba(0, 0, 0, 0.3);
+}
+
+* { 
+  box-sizing: border-box; 
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-body);
+  background: var(--bg-neutral);
+  color: var(--text-heading);
+  min-height: 100vh;
+  transition: all 0.4s ease;
+  overflow-x: hidden;
+}
+
+/* Remove animated background particles for professional look */
+body::before {
+  display: none;
+}
+
+/* Start Screen */
+.start-screen {
+  position: relative;
+  z-index: 1;
+}
+
+.start-screen::before {
+  display: none;
+}
+
+/* --- Utilities --- */
+.hidden { display: none !important; }
+
+/* --- The "Premium Card" --- */
+.container {
+  max-width: 520px;
+  margin: 0 auto;
+  padding: 24px;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+/* Responsive Container */
+@media (max-width: 768px) {
+  .container {
+    padding: 16px;
+    max-width: 100%;
+  }
+}
+
+@media (max-width: 480px) {
+  .container {
+    padding: 12px;
+  }
+}
+
+.start-card {
+  background: var(--card-white);
+  border: 1px solid rgba(6, 95, 70, 0.12); /* Subtle, blended border with low opacity */
+  border-radius: 16px;
+  padding: 48px 36px;
+  box-shadow: 0 4px 20px rgba(6, 95, 70, 0.08),
+              0 1px 3px rgba(6, 95, 70, 0.06),
+              inset 0 1px 0 rgba(255, 255, 255, 0.9); /* Soft inner highlight */
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+}
+
+[data-theme="dark"] .start-card {
+  border: 1px solid rgba(16, 185, 129, 0.15);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3),
+              0 1px 3px rgba(0, 0, 0, 0.2),
+              inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.start-card:hover {
+  border-color: rgba(6, 95, 70, 0.2); /* Slightly more visible on hover */
+  box-shadow: 0 6px 24px rgba(6, 95, 70, 0.12),
+              0 2px 6px rgba(6, 95, 70, 0.08),
+              inset 0 1px 0 rgba(255, 255, 255, 0.95);
+  transform: translateY(-2px);
+  transition: all 0.3s ease;
+}
+
+[data-theme="dark"] .start-card:hover {
+  border-color: rgba(16, 185, 129, 0.25);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4),
+              0 2px 6px rgba(0, 0, 0, 0.3),
+              inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+/* Responsive Start Card */
+@media (max-width: 768px) {
+  .start-card {
+    padding: 32px 24px;
+    border-radius: 12px;
+  }
+}
+
+@media (max-width: 480px) {
+  .start-card {
+    padding: 24px 16px;
+    border-radius: 12px;
+    border-width: 1.5px;
+  }
+}
+
+/* Remove top sheen for professional look */
+.start-card::before {
+  display: none;
+}
+
+/* --- Typography & Branding --- */
+h1, h2, h3, .btn {
+  font-family: var(--font-heading);
+  letter-spacing: -0.5px;
+}
+
+.coach-name {
+  font-family: var(--font-heading);
+  font-size: 2.5rem;
+  font-weight: 600; /* Semi-Bold instead of Extra Bold */
+  margin: 16px 0 8px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  
+  /* Solid color - No gradient, no animation */
+  color: var(--text-heading);
+  background: none;
+  -webkit-text-fill-color: var(--text-heading);
+  animation: none;
+}
+
+/* Responsive Typography */
+@media (max-width: 768px) {
+  .coach-name {
+    font-size: 2rem;
+    margin: 12px 0 6px;
+  }
+  
+  .coach-tagline {
+    font-size: 0.8125rem;
+    margin-bottom: 24px;
+  }
+}
+
+@media (max-width: 480px) {
+  .coach-name {
+    font-size: 1.75rem;
+    letter-spacing: 0.3px;
+    margin: 10px 0 4px;
+  }
+  
+  .coach-tagline {
+    font-size: 0.75rem;
+    margin-bottom: 20px;
+  }
+}
+
+.coach-name::after {
+  display: none; /* Remove glow effect */
+}
+
+.coach-tagline {
+  color: var(--text-secondary);
+  font-size: 0.875rem; /* Smaller */
+  font-weight: 400; /* Regular weight */
+  letter-spacing: 0.3px;
+  margin-bottom: 32px;
+}
+
+/* --- Profile Picture (Professional) --- */
+.profile-container {
+  width: 140px; 
+  height: 140px;
+  margin: 0 auto 24px;
+  position: relative;
+}
+
+.profile-img {
+  width: 100%; 
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1px solid var(--border-light); /* Thin, subtle border */
+  box-shadow: var(--shadow-sm); /* Remove colored glow */
+  z-index: 2; 
+  position: relative;
+  transition: all 0.3s ease;
+  background: var(--card-white);
+}
+
+.profile-img:hover {
+  box-shadow: var(--shadow-md);
+}
+
+/* Responsive Profile Picture */
+@media (max-width: 768px) {
+  .profile-container {
+    width: 120px;
+    height: 120px;
+    margin: 0 auto 20px;
+  }
+}
+
+@media (max-width: 480px) {
+  .profile-container {
+    width: 100px;
+    height: 100px;
+    margin: 0 auto 16px;
+  }
+}
+
+/* --- Feature Badges (Professional) --- */
+.offer-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--surface-subtle); /* Subtle gray background */
+  border: none;
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  color: var(--text-feature);
+  margin-bottom: 32px;
+  font-weight: 400;
+}
+
+.offer-badge i {
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+}
+
+.offer-badge strong {
+  color: var(--text-feature);
+  font-weight: 500;
+}
+
+.offer-badge .divider {
+  color: var(--text-secondary);
+  margin: 0 4px;
+}
+
+/* --- Inputs (Professional) --- */
+.form-group-enhanced { 
+  margin-bottom: 20px; 
+  text-align: left; 
+}
+
+.form-group-enhanced label {
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  font-weight: 500;
+  margin-bottom: 6px;
+  display: block;
+}
+
+.form-group-enhanced input {
+  width: 100%;
+  padding: 14px 16px;
+  border-radius: 8px;
+  border: 1px solid var(--border-input);
+  background: var(--card-white);
+  color: var(--text-input);
+  font-family: var(--font-body);
+  font-size: 1rem;
+  transition: all 0.2s ease;
+}
+
+.form-group-enhanced input::placeholder {
+  color: var(--text-secondary);
+}
+
+.form-group-enhanced input:focus {
+  outline: none;
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 3px rgba(6, 95, 70, 0.1);
+}
+
+[data-theme="dark"] .form-group-enhanced input {
+  background: var(--card-white);
+  border-color: var(--border-input);
+}
+
+[data-theme="dark"] .form-group-enhanced input:focus {
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.2);
+}
+
+/* --- Buttons (Professional - Only Accent Color) --- */
+.btn-start-call {
+  width: 100%;
+  padding: 16px 28px;
+  background: var(--accent-primary); /* Matte/Flat finish - No gradient */
+  color: #ffffff;
+  border: none;
+  border-radius: 8px;
+  font-family: var(--font-body);
+  font-size: 1rem;
+  font-weight: 500; /* Medium weight */
+  cursor: pointer;
+  box-shadow: var(--shadow-sm);
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.btn-start-call:hover {
+  background: var(--accent-hover);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-1px);
+}
+
+.btn-start-call:active {
+  transform: translateY(0);
+  box-shadow: var(--shadow-sm);
+}
+
+.btn-start-call i { 
+  font-size: 1rem; 
+}
+
+/* Responsive Buttons */
+@media (max-width: 768px) {
+  .btn-start-call {
+    padding: 14px 24px;
+    font-size: 0.9375rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .btn-start-call {
+    padding: 12px 20px;
+    font-size: 0.875rem;
+    gap: 8px;
+  }
+  
+  .btn-start-call i {
+    font-size: 0.875rem;
+  }
+}
+
+/* Remove all gradient and animation effects */
+.btn-start-call::before,
+.btn-start-call::after {
+  display: none;
+}
+
+/* --- Permission Box (Minimized) --- */
+.permission-notice-enhanced {
+  display: none; /* Hide by default - show only when needed */
+}
+
+/* Alternative: Small text under button */
+.permission-text-small {
+  display: block;
+  text-align: center;
+  margin-top: 8px;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+/* --- Side Panel --- */
+.side-panel {
+  background: #F8FAFC; /* Very light off-white */
+  border-right: 1px solid var(--border-light);
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+[data-theme="dark"] .side-panel {
+  background: #1F2937; /* Dark slate for dark mode */
+}
+
+.side-panel-header { 
+  border-bottom: 1px solid var(--border-light);
+  padding: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.side-panel-logo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.logo-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #047857 0%, #065F46 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 20px;
+}
+
+.logo-text {
+  font-family: var(--font-heading);
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #047857; /* Dark emerald */
+  letter-spacing: 0.5px;
+}
+
+[data-theme="dark"] .logo-text {
+  color: #10B981; /* Bright emerald for dark mode */
+}
+
+.side-panel-header-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.side-panel-action-btn {
+  width: 36px;
+  height: 36px;
+  border: 1.5px solid var(--border-light);
+  border-radius: 8px; /* Slightly rounded square */
+  background: transparent; /* Outline button */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  color: var(--text-heading);
+}
+
+.side-panel-action-btn:hover {
+  background: var(--surface-subtle);
+  border-color: var(--text-heading);
+  transform: scale(1.05);
+}
+
+[data-theme="dark"] .side-panel-action-btn {
+  background: transparent;
+  border-color: #4B5563;
+  color: var(--text-secondary);
+}
+
+[data-theme="dark"] .side-panel-action-btn:hover {
+  background: #4B5563;
+}
+
+.side-panel-content {
+  flex: 1;
+  padding: 20px;
+  overflow-y: auto;
+}
+
+/* Talk Time Card */
+.talktime-card {
+  background: linear-gradient(135deg, #FFFFFF 0%, #F0F9FF 100%); /* White to pale-blue gradient */
+  border-radius: 20px;
+  padding: 24px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08),
+              0 2px 4px rgba(0, 0, 0, 0.04);
+  transition: all 0.3s ease;
+}
+
+[data-theme="dark"] .talktime-card {
+  background: linear-gradient(135deg, #1F2937 0%, #111827 100%);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4),
+              0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+/* Label Row */
+.talktime-label-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-secondary);
+}
+
+.talktime-label-row i {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+
+/* Large Value Box */
+.talktime-value-box {
+  background: linear-gradient(135deg, #D1FAE5 0%, #FFFFFF 100%); /* Light mint to white */
+  border-radius: 16px;
+  padding: 24px;
+  text-align: center;
+  margin-bottom: 20px;
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+[data-theme="dark"] .talktime-value-box {
+  background: linear-gradient(135deg, #064E3B 0%, #1F2937 100%);
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.talktime-value-box span:first-child {
+  font-size: 2.5rem;
+  font-weight: 800;
+  color: #047857; /* Dark emerald */
+  font-family: var(--font-heading);
+  line-height: 1;
+}
+
+[data-theme="dark"] .talktime-value-box span:first-child {
+  color: #10B981; /* Bright emerald for dark mode */
+}
+
+.talktime-unit {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #047857;
+  margin-left: 4px;
+}
+
+[data-theme="dark"] .talktime-unit {
+  color: #10B981;
+}
+
+/* Progress Bar Container */
+.talktime-progress-container {
+  margin-bottom: 12px;
+}
+
+.talktime-progress-bar {
+  width: 100%;
+  height: 8px;
+  background: var(--surface-subtle);
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+
+[data-theme="dark"] .talktime-progress-bar {
+  background: #374151;
+}
+
+.talktime-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #047857 0%, #10B981 100%);
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+[data-theme="dark"] .talktime-progress-fill {
+  background: linear-gradient(90deg, #10B981 0%, #34D399 100%);
+}
+
+/* Progress Text */
+.talktime-progress-text {
+  text-align: center;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.side-panel-footer { 
+  border-top: 1px solid var(--border-light);
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Footer Buttons - White Cards */
+.side-panel-footer-btn {
+  height: 50px;
+  border-radius: 12px;
+  background: white;
+  border: 1px solid var(--border-light);
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 16px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: var(--font-body);
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+
+.side-panel-footer-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.side-panel-footer-btn:active {
+  transform: translateY(0);
+}
+
+[data-theme="dark"] .side-panel-footer-btn {
+  background: #374151;
+  border-color: #4B5563;
+  color: var(--text-secondary);
+}
+
+[data-theme="dark"] .side-panel-footer-btn:hover {
+  background: #4B5563;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+}
+
+/* Buy Talktime Button - Special Styling */
+.side-panel-buy-btn {
+  color: #047857; /* Dark green text */
+}
+
+[data-theme="dark"] .side-panel-buy-btn {
+  color: #10B981;
+}
+
+.buy-btn-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: #047857; /* Dark green box */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 0.875rem;
+}
+
+[data-theme="dark"] .buy-btn-icon {
+  background: #10B981;
+}
+
+.side-panel-buy-btn span {
+  font-weight: 700;
+  color: #047857;
+}
+
+[data-theme="dark"] .side-panel-buy-btn span {
+  color: #10B981;
+}
+
+/* Change Account Button */
+.side-panel-account-btn {
+  color: var(--text-secondary);
+  border: 1px solid var(--border-light);
+}
+
+.side-panel-account-btn i {
+  color: var(--text-secondary);
+  font-size: 1.125rem;
+}
+
+/* Logout Button */
+.side-panel-logout-btn {
+  color: var(--text-secondary);
+  border: 1px solid var(--border-light);
+}
+
+.side-panel-logout-btn i {
+  color: var(--text-secondary);
+  font-size: 1.125rem;
+}
+
+/* --- 1. Clean Profile Picture (No Ring) --- */
+.call-profile-section .profile-container {
+  position: relative;
+  width: 280px;
+  height: 280px;
+  margin: 0 auto 24px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 10;
+}
+
+.call-profile-section .profile-img {
+  width: 260px;
+  height: 260px;
+  border-radius: 50%;
+  object-fit: cover;
+  object-position: center top;
+  z-index: 20;
+  border: 4px solid #ffffff;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.1); /* clean shadow */
+  background: white;
+}
+
+/* REMOVED: All ::after and ::before ring animations */
+
+/* --- 2. Real-Time Audio Visualizer --- */
+#screen-call .voice-wave {
+  position: relative;
+  margin-top: 16px;   /* Space below the name */
+  height: 50px;       /* Taller container for better movement */
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 6px;
+  z-index: 5;
+  opacity: 0;         /* Hidden when silent */
+  transition: opacity 0.1s ease;
+}
+
+/* Ensure hidden is actually hidden */
+#screen-call .voice-wave.hidden {
+  display: none !important;
+  opacity: 0;
+}
+
+/* Force show when active */
+#screen-call .voice-wave.active {
+  opacity: 1 !important;
+  display: flex !important;
+}
+
+/* The Bars */
+#screen-call .voice-wave .bar {
+  width: 6px;
+  height: 6px;        /* Resting height */
+  background: var(--accent-primary); /* Uses your deep green brand color */
+  border-radius: 99px;
+  transition: height 0.05s ease; /* Ultra-fast response time */
+  will-change: height;
+}
+
+/* ===== Call Screen (Preserve functionality) ===== */
+.call-screen {
+  width: 100%;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  background: var(--bg-neutral);
+  overflow: hidden;
+}
+
+/* Hide side panel when call screen is active */
+body:has(.call-screen:not(.hidden)) .side-panel,
+body:has(.call-screen:not(.hidden)) .side-panel-toggle,
+.side-panel.call-hidden,
+.side-panel-toggle.call-hidden {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+/* Ensure call screen is visible when not hidden */
+.call-screen:not(.hidden) {
+  display: flex !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+}
+
+/* Call Header */
+.call-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 24px;
+  background: var(--card-white);
+  border-bottom: 1px solid var(--border-light);
+  z-index: 100;
+}
+
+/* Connection Status */
+.connection-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent-primary);
+  animation: pulse-dot 2s ease-in-out infinite;
+}
+
+.connection-status.connected .status-dot {
+  background: var(--accent-primary);
+  animation: none;
+}
+
+.connection-status.connected .status-text {
+  color: var(--accent-primary);
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(1.2); }
+}
+
+/* Talktime Badge in Call Header */
+.talktime-badge-call {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  background: var(--surface-subtle);
+  border: 1px solid var(--border-light);
+  border-radius: 20px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-heading);
+  box-shadow: var(--shadow-sm);
+}
+
+.talktime-badge-call i {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.talktime-unit {
+  font-size: 0.75rem;
+  opacity: 0.8;
+}
+
+/* Call Content */
+.call-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
+  position: relative;
+  z-index: 1;
+}
+
+/* Profile Section */
+.call-profile-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 40px;
+  visibility: visible;
+  opacity: 1;
+}
+
+.call-profile-section .profile-img {
+  visibility: visible;
+  opacity: 1;
+}
+
+/* Profile container styles are now defined above in the new section */
+
+/* REMOVED: All pulse animations - Profile image and ring are now static */
+
+.call-profile-section .ring {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 280px;
+  height: 280px;
+  border-radius: 50%;
+  border: 3px solid transparent;
+  z-index: 2;
+  transition: all 0.4s ease;
+}
+
+.call-profile-section .ring.connecting {
+  border-top-color: var(--accent-primary);
+  border-right-color: var(--accent-primary);
+  border-bottom-color: transparent;
+  border-left-color: transparent;
+  box-shadow: 0 0 20px rgba(6, 95, 70, 0.2),
+              0 0 40px rgba(6, 95, 70, 0.1);
+  animation: spin-ring-enhanced 1s linear infinite;
+}
+
+.call-profile-section .ring.speaking {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 30px rgba(6, 95, 70, 0.2),
+              0 0 60px rgba(6, 95, 70, 0.15),
+              0 0 90px rgba(6, 95, 70, 0.1);
+  /* REMOVED: pulse animation - ring is now static */
+}
+
+[data-theme="dark"] .call-profile-section .ring.speaking {
+  box-shadow: 0 0 30px rgba(16, 185, 129, 0.3),
+              0 0 60px rgba(16, 185, 129, 0.25),
+              0 0 90px rgba(16, 185, 129, 0.15);
+  /* REMOVED: pulse animation - ring is now static */
+}
+
+@keyframes spin-ring-enhanced {
+  0% {
+    transform: translate(-50%, -50%) rotate(0deg);
+  }
+  100% {
+    transform: translate(-50%, -50%) rotate(360deg);
+  }
+}
+
+/* Call Title Section */
+.call-title-section {
+  text-align: center;
+  margin-top: 8px;
+  visibility: visible;
+  opacity: 1;
+}
+
+.call-title {
+  font-size: 2.5rem;
+  font-weight: 700;
+  color: var(--text-heading);
+  margin: 0 0 4px 0;
+  letter-spacing: 2px;
+  line-height: 1.1;
+  visibility: visible;
+  opacity: 1;
+}
+
+.call-subtitle {
+  font-size: 0.9375rem;
+  color: var(--text-secondary);
+  font-weight: 500;
+  margin: 0;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  visibility: visible;
+  opacity: 1;
+}
+
+/* Call Timer Section */
+.call-timer-section {
+  text-align: center;
+  margin-bottom: 50px;
+  visibility: visible;
+  opacity: 1;
+}
+
+.call-timer {
+  font-size: 3.5rem;
+  font-weight: 800;
+  font-family: var(--font-heading);
+  color: var(--text-heading);
+  letter-spacing: 4px;
+  margin-bottom: 8px;
+  line-height: 1;
+  visibility: visible;
+  opacity: 1;
+}
+
+/* Base Status Text (Default: Gray) */
+.call-status-text {
+  font-size: 0.875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-secondary); /* Gray */
+  transition: all 0.2s ease;
+  display: inline-block !important; /* Force it to stay visible */
+}
+
+/* Speaking State (Active: Green) */
+.call-status-text.speaking {
+  color: #10b981; /* Bright Green */
+  text-shadow: 0 0 15px rgba(16, 185, 129, 0.3); /* Subtle Green Glow */
+  transform: scale(1.05); /* Slight pop for emphasis */
+}
+
+.call-status-text.hidden {
+  display: none !important;
+}
+
+/* Enhanced Call Controls */
+.call-controls {
+  display: flex;
+  gap: 32px;
+  margin-bottom: 30px;
+  align-items: center;
+  justify-content: center;
+  visibility: visible;
+  opacity: 1;
+}
+
+.control-btn {
+  width: 72px;
+  height: 72px;
+  min-width: 72px;
+  min-height: 72px;
+  border-radius: 50%;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: visible;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  touch-action: manipulation;
+  background: transparent;
+  padding: 0;
+}
+
+.control-btn-inner {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  z-index: 1;
+}
+
+.control-label {
+  position: absolute;
+  bottom: -28px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+  opacity: 0;
+  transform: translateY(5px);
+  transition: all 0.3s ease;
+}
+
+.control-btn:hover .control-label {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Mic Button */
+.control-btn.mic .control-btn-inner {
+  background: linear-gradient(135deg, #f0f0f0 0%, #e0e0e0 100%);
+  color: #222222;
+  box-shadow: var(--shadow-sm);
+}
+
+[data-theme="dark"] .control-btn.mic .control-btn-inner {
+  background: linear-gradient(135deg, #334155 0%, #1e293b 100%);
+  color: var(--text-secondary);
+  box-shadow: var(--shadow-sm);
+}
+
+.control-btn.mic:hover .control-btn-inner {
+  transform: scale(1.08);
+  box-shadow: var(--shadow-md);
+}
+
+.control-btn.mic:active .control-btn-inner {
+  transform: scale(0.95);
+}
+
+.control-btn.mic.muted .control-btn-inner {
+  background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
+  color: #dc2626;
+  box-shadow: 0 4px 12px rgba(220, 38, 60, 0.2),
+              0 2px 6px rgba(220, 38, 60, 0.15),
+              inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+[data-theme="dark"] .control-btn.mic.muted .control-btn-inner {
+  background: linear-gradient(135deg, #7f1d1d 0%, #991b1b 100%);
+  color: #fca5a5;
+  box-shadow: 0 4px 12px rgba(220, 38, 60, 0.3),
+              0 2px 6px rgba(220, 38, 60, 0.2),
+              inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+.control-btn.mic.muted:hover .control-btn-inner {
+  background: linear-gradient(135deg, #fecaca 0%, #fca5a5 100%);
+  box-shadow: 0 6px 20px rgba(220, 38, 60, 0.3),
+              0 3px 10px rgba(220, 38, 60, 0.2),
+              inset 0 1px 0 rgba(255, 255, 255, 0.95);
+}
+
+[data-theme="dark"] .control-btn.mic.muted:hover .control-btn-inner {
+  background: linear-gradient(135deg, #991b1b 0%, #b91c1c 100%);
+  box-shadow: 0 6px 20px rgba(220, 38, 60, 0.4),
+              0 3px 10px rgba(220, 38, 60, 0.3),
+              inset 0 1px 0 rgba(255, 255, 255, 0.15);
+}
+
+/* End Call Button */
+.control-btn.end .control-btn-inner {
+  background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
+  color: #dc2626;
+  box-shadow: 0 4px 12px rgba(220, 38, 60, 0.2),
+              0 2px 6px rgba(220, 38, 60, 0.15),
+              inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+[data-theme="dark"] .control-btn.end .control-btn-inner {
+  background: linear-gradient(135deg, #7f1d1d 0%, #991b1b 100%);
+  color: #fca5a5;
+  box-shadow: 0 4px 12px rgba(220, 38, 60, 0.3),
+              0 2px 6px rgba(220, 38, 60, 0.2),
+              inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+.control-btn.end:hover .control-btn-inner {
+  transform: scale(1.08);
+  background: linear-gradient(135deg, #fecaca 0%, #fca5a5 100%);
+  box-shadow: 0 6px 20px rgba(220, 38, 60, 0.3),
+              0 3px 10px rgba(220, 38, 60, 0.2),
+              inset 0 1px 0 rgba(255, 255, 255, 0.95);
+}
+
+.control-btn.end:active .control-btn-inner {
+  transform: scale(0.95);
+}
+
+/* Buy Talktime Button */
+.buy-talktime-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 14px 28px;
+  background: var(--accent-primary);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.9375rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: var(--shadow-sm);
+  letter-spacing: 0.3px;
+}
+
+.buy-talktime-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+  background: var(--accent-hover);
+}
+
+.buy-talktime-btn:active {
+  transform: translateY(0);
+}
+
+.buy-talktime-btn i {
+  font-size: 1rem;
+}
+
+/* Enhanced Voice Wave for Call Screen */
+#screen-call .voice-wave {
+  width: 140px;
+  height: 100px;
+  z-index: 999; /* Increased to ensure it sits on top of the image */
+}
+
+#screen-call .voice-wave .bar {
+  width: 10px;
+  box-shadow: 0 0 15px rgba(14, 165, 233, 0.6);
+}
+
+/* ===== Responsive Design ===== */
+
+/* Tablets (641px - 1024px) */
+@media (max-width: 1024px) and (min-width: 641px) {
+  .container {
+    max-width: 600px;
+    padding: 20px;
+  }
+  
+  .start-card {
+    padding: 40px 32px;
+  }
+  
+  .call-profile-section .profile-container {
+    width: 240px;
+    height: 240px;
+  }
+  
+  .call-profile-section .profile-img {
+    width: 220px;
+    height: 220px;
+  }
+  
+  .call-title {
+    font-size: 2.25rem;
+  }
+  
+  .call-timer {
+    font-size: 3rem;
+  }
+}
+
+/* Mobile Devices (up to 640px) */
+@media (max-width: 640px) {
+  /* Start Screen */
+  .container {
+    padding: 12px;
+  }
+  
+  .start-card {
+    padding: 24px 16px;
+  }
+  
+  .coach-name {
+    font-size: 1.75rem;
+  }
+  
+  .profile-container {
+    width: 100px;
+    height: 100px;
+  }
+  
+  .offer-badge {
+    font-size: 0.75rem;
+    padding: 6px 12px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  
+  .form-group-enhanced input {
+    padding: 12px 14px;
+    font-size: 0.9375rem;
+  }
+  
+  /* Call Screen */
+  .call-header {
+    padding: 12px 16px;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .call-content {
+    padding: 20px 12px;
+  }
+
+  .call-profile-section {
+    margin-bottom: 24px;
+  }
+
+  .call-profile-section .profile-container {
+    width: 180px;
+    height: 180px;
+  }
+
+  .call-profile-section .profile-img {
+    width: 160px;
+    height: 160px;
+  }
+
+  .call-profile-section .ring {
+    width: 180px;
+    height: 180px;
+  }
+
+  .call-title {
+    font-size: 1.75rem;
+    letter-spacing: 1px;
+  }
+  
+  .call-subtitle {
+    font-size: 0.8125rem;
+  }
+
+  .call-timer {
+    font-size: 2.25rem;
+    letter-spacing: 2px;
+  }
+  
+  .call-status-text {
+    font-size: 0.75rem;
+  }
+
+  .call-controls {
+    gap: 20px;
+    margin-bottom: 24px;
+  }
+
+  .control-btn {
+    width: 56px;
+    height: 56px;
+    min-width: 56px;
+    min-height: 56px;
+  }
+
+  .control-btn-inner {
+    font-size: 20px;
+  }
+  
+  .control-label {
+    font-size: 0.6875rem;
+    bottom: -24px;
+  }
+
+  .talktime-badge-call {
+    padding: 6px 10px;
+    font-size: 0.75rem;
+  }
+  
+  .connection-status {
+    font-size: 0.75rem;
+  }
+  
+  /* Voice Wave */
+  .voice-wave {
+    width: 100px;
+    height: 50px;
+  }
+  
+  .voice-wave .bar {
+    width: 6px;
+  }
+  
+  #screen-call .voice-wave {
+    width: 120px;
+    height: 80px;
+  }
+}
+
+/* Small Mobile Devices (up to 480px) */
+@media (max-width: 480px) {
+  .start-card {
+    padding: 20px 12px;
+    border-radius: 12px;
+  }
+  
+  .coach-name {
+    font-size: 1.5rem;
+    margin: 8px 0 4px;
+  }
+  
+  .coach-tagline {
+    font-size: 0.6875rem;
+    margin-bottom: 16px;
+  }
+  
+  .profile-container {
+    width: 80px;
+    height: 80px;
+    margin: 0 auto 12px;
+  }
+  
+  .offer-badge {
+    font-size: 0.6875rem;
+    padding: 4px 8px;
+    margin-top: 12px;
+    margin-bottom: 4px;
+  }
+  
+  .form-group-enhanced {
+    margin-bottom: 16px;
+  }
+  
+  .form-group-enhanced label {
+    font-size: 0.6875rem;
+    margin-bottom: 6px;
+  }
+  
+  .form-group-enhanced input {
+    padding: 10px 12px;
+    font-size: 0.875rem;
+    border-radius: 6px;
+  }
+  
+  .btn-start-call {
+    padding: 12px 16px;
+    font-size: 0.875rem;
+    border-radius: 6px;
+  }
+  
+  /* Call Screen - Small Mobile */
+  .call-header {
+    padding: 10px 12px;
+  }
+  
+  .call-content {
+    padding: 16px 8px;
+  }
+  
+  .call-profile-section .profile-container {
+    width: 150px;
+    height: 150px;
+  }
+
+  .call-profile-section .profile-img {
+    width: 130px;
+    height: 130px;
+  }
+
+  .call-profile-section .ring {
+    width: 150px;
+    height: 150px;
+  }
+
+  .call-title {
+    font-size: 1.5rem;
+  }
+
+  .call-timer {
+    font-size: 2rem;
+    letter-spacing: 1px;
+  }
+  
+  .call-controls {
+    gap: 16px;
+  }
+
+  .control-btn {
+    width: 50px;
+    height: 50px;
+    min-width: 50px;
+    min-height: 50px;
+  }
+
+  .control-btn-inner {
+    font-size: 18px;
+  }
+  
+  .talktime-badge-call {
+    padding: 4px 8px;
+    font-size: 0.6875rem;
+  }
+}
+
+/* Large Screens / Laptops (1025px+) */
+@media (min-width: 1025px) {
+  .container {
+    max-width: 560px;
+    padding: 32px;
+  }
+  
+  .start-card {
+    padding: 56px 44px;
+  }
+  
+  .coach-name {
+    font-size: 2.75rem;
+  }
+  
+  .profile-container {
+    width: 160px;
+    height: 160px;
+  }
+}
+
+/* Side Panel Responsive */
+@media (max-width: 1024px) {
+  .side-panel {
+    width: 280px;
+  }
+}
+
+@media (max-width: 768px) {
+  .side-panel {
+    width: 260px;
+  }
+  
+  .side-panel-header {
+    padding: 16px;
+  }
+  
+  .side-panel-content {
+    padding: 16px;
+  }
+  
+  .talktime-card {
+    padding: 20px;
+  }
+  
+  .talktime-value-box {
+    padding: 20px;
+  }
+  
+  .talktime-value-box span:first-child {
+    font-size: 2rem;
+  }
+  
+  .side-panel-footer {
+    padding: 16px;
+  }
+  
+  .side-panel-footer-btn {
+    height: 48px;
+    font-size: 0.875rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .side-panel {
+    width: 100%;
+    max-width: 320px;
+  }
+  
+  .talktime-card {
+    padding: 16px;
+    border-radius: 16px;
+  }
+  
+  .talktime-value-box {
+    padding: 16px;
+  }
+  
+  .talktime-value-box span:first-child {
+    font-size: 1.75rem;
+  }
+  
+  .talktime-unit {
+    font-size: 1rem;
+  }
+}
+
+/* Smooth scroll */
+html {
+  scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%; /* Prevent iOS text size adjustment */
+}
+
+/* Focus visible for accessibility */
+*:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
+/* Touch-friendly improvements for mobile */
+@media (max-width: 768px) {
+  /* Increase touch target sizes */
+  button, .btn, .control-btn {
+    min-height: 44px; /* iOS recommended minimum */
+    min-width: 44px;
+  }
+  
+  /* Prevent text selection on buttons */
+  button, .btn {
+    -webkit-tap-highlight-color: rgba(6, 95, 70, 0.2);
+    -webkit-touch-callout: none;
+    user-select: none;
+  }
+  
+  /* Better spacing for touch */
+  .form-group-enhanced {
+    margin-bottom: 18px;
+  }
+  
+  .action-buttons-group {
+    gap: 12px;
+  }
+}
+
+/* Landscape orientation adjustments */
+@media (max-width: 768px) and (orientation: landscape) {
+  .container {
+    padding: 12px;
+    min-height: auto;
+    justify-content: flex-start;
+    padding-top: 20px;
+  }
+  
+  .start-card {
+    padding: 20px 16px;
+  }
+  
+  .profile-container {
+    width: 80px;
+    height: 80px;
+    margin: 0 auto 12px;
+  }
+  
+  .coach-name {
+    font-size: 1.5rem;
+    margin: 8px 0 4px;
+  }
+  
+  .call-content {
+    padding: 16px 12px;
+  }
+  
+  .call-profile-section {
+    margin-bottom: 16px;
+  }
+  
+  .call-profile-section .profile-container {
+    width: 140px;
+    height: 140px;
+  }
+  
+  .call-profile-section .profile-img {
+    width: 120px;
+    height: 120px;
+  }
+}
+
+/* Prevent horizontal scroll on mobile */
+body {
+  overflow-x: hidden;
+  width: 100%;
+}
+
+/* Ensure images are responsive */
+img {
+  max-width: 100%;
+  height: auto;
+}

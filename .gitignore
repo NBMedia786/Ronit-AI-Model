@@ -1,0 +1,15 @@
+# Ignore the virtual environment folder
+venv/
+env/
+
+# Ignore compiled python files
+__pycache__/
+*.pyc
+
+# CRITICAL: Ignore environment variables (API Keys)
+.env
+
+# Ignore local database files (optional, but recommended for production safety)
+data/
+*.db
+*.sqlite3

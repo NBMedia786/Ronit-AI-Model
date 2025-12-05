@@ -1,0 +1,549 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Sign Up - Personal AI Coach</title>
+  <meta name="description" content="Create an account to start your AI coaching journey">
+  
+  <!-- PWA Manifest -->
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#0ea5e9">
+  
+  <!-- Permissions Policy for Microphone -->
+  <meta http-equiv="Permissions-Policy" content="microphone=(self), camera=(), geolocation=()">
+  
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <!-- Google Identity Services -->
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <style>
+    .login-wrapper {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      position: relative;
+    }
+
+    .login-card {
+      background: white;
+      border-radius: 24px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15),
+                  0 8px 24px rgba(0, 0, 0, 0.1);
+      padding: 48px 40px;
+      width: 100%;
+      max-width: 440px;
+      border: 1px solid rgba(226, 232, 240, 0.8);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .login-card::before {
+      display: none;
+    }
+
+    .login-header {
+      text-align: center;
+      margin-bottom: 32px;
+    }
+
+    .login-logo {
+      width: 120px;
+      height: 120px;
+      margin: 0 auto 20px;
+      position: relative;
+    }
+
+    .login-logo .profile-container {
+      width: 120px;
+      height: 120px;
+      margin: 0 auto;
+    }
+
+    .login-logo .profile-img {
+      width: 120px;
+      height: 120px;
+      border: 3px solid #0ea5e9;
+      box-shadow: 0 4px 12px rgba(14, 165, 233, 0.3);
+    }
+
+    .login-header h1 {
+      font-size: 2rem;
+      font-weight: 700;
+      color: #0f172a;
+      margin: 0 0 8px 0;
+      letter-spacing: -0.5px;
+    }
+
+    .login-header p {
+      color: #64748b;
+      font-size: 0.95rem;
+      margin: 0;
+    }
+
+    .login-form {
+      width: 100%;
+    }
+
+    .form-group {
+      margin-bottom: 20px;
+      position: relative;
+    }
+
+    .form-group label {
+      display: block;
+      font-weight: 600;
+      color: #334155;
+      font-size: 0.875rem;
+      margin-bottom: 8px;
+    }
+
+    .form-group input {
+      width: 100%;
+      padding: 14px 16px;
+      border: 2px solid #e2e8f0;
+      border-radius: 12px;
+      font-size: 0.95rem;
+      transition: all 0.2s;
+      background: #f8fafc;
+      font-family: inherit;
+    }
+
+    .form-group input:focus {
+      outline: none;
+      border-color: #0ea5e9;
+      background: white;
+      box-shadow: 0 0 0 4px rgba(14, 165, 233, 0.1);
+    }
+
+    .form-group input::placeholder {
+      color: #94a3b8;
+    }
+
+    .password-requirements {
+      font-size: 0.75rem;
+      color: #64748b;
+      margin-top: 4px;
+      padding-left: 4px;
+    }
+
+    .btn-signup {
+      width: 100%;
+      padding: 14px 24px;
+      background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%);
+      color: white;
+      border: none;
+      border-radius: 12px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      box-shadow: 0 4px 12px rgba(14, 165, 233, 0.3);
+      margin-bottom: 24px;
+    }
+
+    .btn-signup:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 16px rgba(14, 165, 233, 0.4);
+    }
+
+    .btn-signup:active {
+      transform: translateY(0);
+    }
+
+    .divider {
+      display: flex;
+      align-items: center;
+      text-align: center;
+      margin: 24px 0;
+      color: #94a3b8;
+      font-size: 0.875rem;
+    }
+
+    .divider::before,
+    .divider::after {
+      content: '';
+      flex: 1;
+      border-bottom: 1px solid #e2e8f0;
+    }
+
+    .divider span {
+      padding: 0 16px;
+    }
+
+    .google-signin-container {
+      margin-bottom: 24px;
+    }
+
+    .login-link {
+      text-align: center;
+      color: #64748b;
+      font-size: 0.9rem;
+      margin-top: 24px;
+    }
+
+    .login-link a {
+      color: #0ea5e9;
+      text-decoration: none;
+      font-weight: 600;
+      transition: color 0.2s;
+    }
+
+    .login-link a:hover {
+      color: #0284c7;
+      text-decoration: underline;
+    }
+
+    .error-message {
+      display: none;
+      background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
+      color: #991b1b;
+      border: 2px solid #ef4444;
+      border-radius: 12px;
+      padding: 14px 18px;
+      margin-bottom: 20px;
+      font-size: 0.875rem;
+      font-weight: 500;
+      animation: slideDown 0.3s;
+    }
+
+    .success-message {
+      display: none;
+      background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);
+      color: #065f46;
+      border: 2px solid #10b981;
+      border-radius: 12px;
+      padding: 14px 18px;
+      margin-bottom: 20px;
+      font-size: 0.875rem;
+      font-weight: 500;
+      animation: slideDown 0.3s;
+    }
+
+    @keyframes slideDown {
+      from {
+        transform: translateY(-10px);
+        opacity: 0;
+      }
+      to {
+        transform: translateY(0);
+        opacity: 1;
+      }
+    }
+
+    .error-message::before {
+      content: '⚠️ ';
+      margin-right: 8px;
+    }
+
+    .success-message::before {
+      content: '✅ ';
+      margin-right: 8px;
+    }
+
+    @media (max-width: 640px) {
+      .login-card {
+        padding: 32px 24px;
+        border-radius: 20px;
+      }
+
+      .login-header h1 {
+        font-size: 1.75rem;
+      }
+
+      .login-logo {
+        width: 100px;
+        height: 100px;
+      }
+
+      .login-logo .profile-container {
+        width: 100px;
+        height: 100px;
+      }
+
+      .login-logo .profile-img {
+        width: 100px;
+        height: 100px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="login-wrapper">
+    <div class="login-card">
+      <div class="login-header">
+        <div class="login-logo">
+          <div class="profile-container">
+            <img src="coach.jpg" alt="Ronit" class="profile-img">
+          </div>
+        </div>
+        <h1>Create Account</h1>
+        <p>Start your journey with Ronit AI Coach</p>
+      </div>
+
+      <div id="signupError" class="error-message"></div>
+      <div id="signupSuccess" class="success-message"></div>
+
+      <form id="signupForm" class="login-form">
+        <div class="form-group">
+          <label for="signupName">
+            <i class="fas fa-user" style="margin-right: 6px; color: #64748b;"></i>
+            Full Name (Optional)
+          </label>
+          <input 
+            type="text" 
+            id="signupName" 
+            placeholder="Enter your name" 
+            autocomplete="name"
+          >
+        </div>
+
+        <div class="form-group">
+          <label for="signupEmail">
+            <i class="fas fa-envelope" style="margin-right: 6px; color: #64748b;"></i>
+            Email Address
+          </label>
+          <input 
+            type="email" 
+            id="signupEmail" 
+            placeholder="Enter your email" 
+            required 
+            autocomplete="email"
+          >
+        </div>
+        
+        <div class="form-group">
+          <label for="signupPassword">
+            <i class="fas fa-lock" style="margin-right: 6px; color: #64748b;"></i>
+            Password
+          </label>
+          <input 
+            type="password" 
+            id="signupPassword" 
+            placeholder="Create a password" 
+            required 
+            autocomplete="new-password"
+            minlength="6"
+          >
+          <div class="password-requirements">
+            Password must be at least 6 characters long
+          </div>
+        </div>
+        
+        <div class="form-group">
+          <label for="signupPasswordConfirm">
+            <i class="fas fa-lock" style="margin-right: 6px; color: #64748b;"></i>
+            Confirm Password
+          </label>
+          <input 
+            type="password" 
+            id="signupPasswordConfirm" 
+            placeholder="Confirm your password" 
+            required 
+            autocomplete="new-password"
+            minlength="6"
+          >
+        </div>
+        
+        <button type="submit" class="btn-signup" id="btn-signup">
+          <i class="fas fa-user-plus" style="margin-right: 8px;"></i>
+          Create Account
+        </button>
+        
+        <div class="divider" id="dividerOr">
+          <span>OR</span>
+        </div>
+        
+        <div class="google-signin-container">
+          <div id="google-signin-button"></div>
+        </div>
+        
+        <div class="login-link">
+          Already have an account? <a href="/login.html" id="loginLink">Login</a>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <footer id="mainFooter" style="position: fixed; bottom: 0; left: 0; right: 0; text-align: center; padding: 16px; background: rgba(255, 255, 255, 0.8); backdrop-filter: blur(10px); border-top: 1px solid #e2e8f0; z-index: 100;">
+    <p style="margin: 0; color: #64748b; font-size: 0.875rem;">
+      Copyright 2025 AI Coach | <a href="#" style="color: #0ea5e9; text-decoration: none;">Terms</a> | <a href="#" style="color: #0ea5e9; text-decoration: none;">Privacy</a>
+    </p>
+  </footer>
+
+  <script type="module">
+    let GOOGLE_CLIENT_ID = '';
+    
+    // Fetch Google Client ID from backend
+    async function loadGoogleClientId() {
+      try {
+        const response = await fetch('/config');
+        const config = await response.json();
+        if (config.googleClientId && config.hasGoogleAuth) {
+          GOOGLE_CLIENT_ID = config.googleClientId;
+          console.log('Google Client ID loaded from backend');
+        } else {
+          console.warn('Google Client ID not configured.');
+          const googleButton = document.getElementById('google-signin-button');
+          const divider = document.getElementById('dividerOr');
+          if (googleButton) {
+            googleButton.style.display = 'none';
+          }
+          if (divider) {
+            divider.style.display = 'none';
+          }
+        }
+      } catch (error) {
+        console.error('Error loading config:', error);
+      }
+    }
+    
+    // Handle Google Sign-In (for signup, it will create account if doesn't exist)
+    function handleGoogleSignIn(response) {
+      try {
+        const payload = JSON.parse(atob(response.credential.split('.')[1]));
+        const userEmail = payload.email;
+        const userName = payload.name || payload.given_name || userEmail.split('@')[0];
+        const userPicture = payload.picture || null;
+        
+        // For Google sign-in, we'll handle it as login (user already exists in Google)
+        // Redirect to login page or handle directly
+        sessionStorage.setItem('userEmail', userEmail);
+        sessionStorage.setItem('userName', userName);
+        if (userPicture) {
+          sessionStorage.setItem('userPicture', userPicture);
+        }
+        sessionStorage.setItem('isLoggedIn', 'true');
+        
+        window.location.href = '/';
+      } catch (error) {
+        console.error('Error processing Google Sign-In:', error);
+        showError('Error processing Google Sign-In. Please try again.');
+      }
+    }
+    
+    function initializeGoogleSignIn() {
+      if (typeof google === 'undefined' || !google.accounts) {
+        return;
+      }
+      
+      if (GOOGLE_CLIENT_ID && GOOGLE_CLIENT_ID.length > 0) {
+        google.accounts.id.initialize({
+          client_id: GOOGLE_CLIENT_ID,
+          callback: handleGoogleSignIn,
+          auto_select: false,
+          cancel_on_tap_outside: true
+        });
+        
+        const buttonContainer = document.getElementById('google-signin-button');
+        if (buttonContainer) {
+          google.accounts.id.renderButton(buttonContainer, {
+            type: 'standard',
+            theme: 'outline',
+            size: 'large',
+            text: 'signup_with',
+            width: '100%',
+            locale: 'en'
+          });
+        }
+      }
+    }
+    
+    function showError(message) {
+      const errorDiv = document.getElementById('signupError');
+      const successDiv = document.getElementById('signupSuccess');
+      errorDiv.textContent = message;
+      errorDiv.style.display = 'block';
+      successDiv.style.display = 'none';
+      setTimeout(() => {
+        errorDiv.style.display = 'none';
+      }, 5000);
+    }
+    
+    function showSuccess(message) {
+      const errorDiv = document.getElementById('signupError');
+      const successDiv = document.getElementById('signupSuccess');
+      successDiv.textContent = message;
+      successDiv.style.display = 'block';
+      errorDiv.style.display = 'none';
+    }
+    
+    // Wait for Google Identity Services to load
+    window.addEventListener('load', async () => {
+      await loadGoogleClientId();
+      if (typeof google !== 'undefined' && google.accounts) {
+        initializeGoogleSignIn();
+      } else {
+        setTimeout(initializeGoogleSignIn, 500);
+      }
+    });
+    
+    // Signup form handler
+    document.getElementById('signupForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      
+      const name = document.getElementById('signupName').value.trim();
+      const email = document.getElementById('signupEmail').value.trim().toLowerCase();
+      const password = document.getElementById('signupPassword').value;
+      const passwordConfirm = document.getElementById('signupPasswordConfirm').value;
+      const signupBtn = document.getElementById('btn-signup');
+      const originalText = signupBtn.innerHTML;
+      
+      // Validation
+      if (!email || !email.includes('@')) {
+        showError('Please enter a valid email address.');
+        return;
+      }
+      
+      if (password.length < 6) {
+        showError('Password must be at least 6 characters long.');
+        return;
+      }
+      
+      if (password !== passwordConfirm) {
+        showError('Passwords do not match. Please try again.');
+        return;
+      }
+      
+      // Show loading state
+      signupBtn.disabled = true;
+      signupBtn.innerHTML = '<i class="fas fa-spinner fa-spin" style="margin-right: 8px;"></i> Creating Account...';
+      
+      try {
+        const response = await fetch('/api/auth/signup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: email,
+            password: password,
+            name: name || undefined
+          })
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok && data.ok) {
+          showSuccess('Account created successfully! Redirecting to login...');
+          
+          // Redirect to login page after 2 seconds
+          setTimeout(() => {
+            window.location.href = '/login.html?signup=success';
+          }, 2000);
+        } else {
+          showError(data.message || 'Failed to create account. Please try again.');
+          signupBtn.disabled = false;
+          signupBtn.innerHTML = originalText;
+        }
+      } catch (error) {
+        console.error('Signup error:', error);
+        showError('Network error. Please check your connection and try again.');
+        signupBtn.disabled = false;
+        signupBtn.innerHTML = originalText;
+      }
+    });
+  </script>
+</body>
+</html>
+
