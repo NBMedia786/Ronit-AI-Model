@@ -1134,23 +1134,7 @@ async function startVoiceSession() {
           },
           firstMessage: "Hello, I am Ronit. How can I help you today?" // Pre-caching the first message
         }
-        // tts block removed entirely - let Agent use its native, correct model
       },
-
-      // [VPS FIX] WebRTC Configuration for VPS/Server deployments
-      // This helps with NAT traversal and connection stability
-      // Using Google's public STUN servers which are reliable and free
-      iceServers: [
-        { urls: "stun:stun.l.google.com:19302" },
-        { urls: "stun:stun1.l.google.com:19302" },
-        { urls: "stun:stun2.l.google.com:19302" },
-        { urls: "stun:stun3.l.google.com:19302" },
-        { urls: "stun:stun4.l.google.com:19302" }
-      ],
-      // Force TCP if UDP is blocked (common in some VPS/Firewall setups)
-      // But allow UDP as it's better for real-time audio
-      transportPolicy: "all", 
-      enableTCP: true,
 
       // 1. SMART LATENCY TRIGGER (The Alternate Fix)
       onMessage: ({ source, message }) => {
