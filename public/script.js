@@ -675,16 +675,17 @@ async function requestMicrophonePermission() {
     };
   }
 
-  // Check if permission is already granted before requesting
-  let permissionStatus = 'prompt';
+  // Check permission status (non-blocking - always attempt getUserMedia)
+  // Permissions API is inconsistent on Firefox and Safari (iOS), so we don't rely on it
+  let permissionStatus = 'unknown';
   try {
     if (navigator.permissions && navigator.permissions.query) {
       const result = await navigator.permissions.query({ name: 'microphone' });
       permissionStatus = result.state;
-      console.log('🎤 Current microphone permission status:', permissionStatus);
+      console.log('🎤 Permissions API status:', permissionStatus);
       
-      // Only return early if permission is explicitly denied
-      // Even if granted, we still need to try getUserMedia as hardware issues can occur
+      // Only return early if permission is EXPLICITLY denied
+      // Even if granted or prompt, we MUST attempt getUserMedia (iOS/Firefox may report incorrectly)
       if (permissionStatus === 'denied') {
         return {
           success: false,
@@ -694,14 +695,17 @@ async function requestMicrophonePermission() {
                  '2. Set "Microphone" to "Allow"\n' +
                  '3. Refresh the page and try again'
         };
-      } else if (permissionStatus === 'granted') {
-        console.log('✅ Microphone permission already granted - will attempt to access microphone');
       }
     }
   } catch (permErr) {
-    // Permissions API might not be supported, continue with getUserMedia
-    console.log('⚠️ Permissions API not available, will check via getUserMedia');
+    // Permissions API not supported or failed (common on iOS Safari, Firefox)
+    // This is OK - we will attempt getUserMedia regardless
+    console.log('⚠️ Permissions API unavailable or failed (this is normal on some browsers)');
+    permissionStatus = 'unknown';
   }
+  
+  // CRITICAL: Always attempt getUserMedia even if permissions API is inconclusive
+  // This ensures compatibility with iOS Safari and Firefox where permissions API is unreliable
 
   // Check if we already have an active stream
   if (userMediaStream) {
@@ -1037,105 +1041,68 @@ function enforceMicMuteState() {
 }
 
 async function startVoiceSession() {
-  // Initialize state variables
+  // 1. Reset State
   userTranscript = "";
   timeRemaining = 180;
   totalTalkTime = 0;
   isMicMuted = false;
   
-  // [REMOVED] lastMessageTime - No longer needed for visual sync
-  // Visual status is now 100% driven by actual audio volume data
-  
-  // ===== STEP 1: UI PREPARATION =====
+  // 2. UI Setup (Hide Start, Show Call)
   if (screens.loading) screens.loading.classList.add('hidden');
+  if (screens.ronitStart) screens.ronitStart.classList.add('hidden');
   if (screens.call) {
     screens.call.classList.remove('hidden');
     screens.call.style.display = 'flex';
   }
+  if (footer) footer.style.display = 'none';
   
-  // Clean up Side Panel
+  // Hide Side Panel
   const sidePanel = document.getElementById('sidePanel');
   const sidePanelToggle = document.getElementById('sidePanelToggle');
-  if (sidePanel) {
-    sidePanel.style.display = 'none';
-    sidePanel.style.visibility = 'hidden';
-    sidePanel.classList.add('call-hidden');
-  }
-  if (sidePanelToggle) {
-    sidePanelToggle.style.display = 'none';
-    sidePanelToggle.style.visibility = 'hidden';
-    sidePanelToggle.classList.add('call-hidden');
-  }
-  
-  const talkTimeDisplay = document.getElementById('talkTimeDisplay');
-  if (talkTimeDisplay) talkTimeDisplay.style.display = 'block';
-  
-  // Timer UI Reset
-  if (talkTimeValue) talkTimeValue.textContent = '0';
-  if (callTalktimeValue) {
-    const talktime = parseInt(sessionStorage.getItem('userTalktime') || '0', 10);
-    callTalktimeValue.textContent = talktime.toLocaleString();
-  }
-  
-  const btnStartLoading = document.getElementById('btn-start-loading');
-  if (btnStartLoading) {
-    btnStartLoading.disabled = false;
-    btnStartLoading.innerHTML = '<i class="fas fa-phone-alt"></i><span>Start Call with Ronit</span>';
-  }
+  if (sidePanel) sidePanel.style.display = 'none';
+  if (sidePanelToggle) sidePanelToggle.style.display = 'none';
 
   updateStatus('Requesting microphone access...', 'connecting');
 
-  // ===== STEP 2: REQUEST MICROPHONE PERMISSION FIRST (CRITICAL) =====
-  // This MUST happen before any AudioContext initialization to avoid race conditions
+  // 3. CRITICAL: Request Microphone FIRST
+  // Do NOT touch AudioContext before this line completes
   const permissionResult = await requestMicrophonePermission();
+  
   if (permissionResult !== true) {
-    // Display specific error message from the permission request
-    const errorMessage = permissionResult?.error || 'Microphone access is required. Please allow access and try again.';
-    updateStatus('Microphone Access Required', 'default');
-    alert(errorMessage);
+    const errorMsg = permissionResult?.error || 'Microphone access denied.';
+    alert(errorMsg);
+    // Reset UI to Start Screen
     if (screens.call) screens.call.classList.add('hidden');
     if (screens.ronitStart) screens.ronitStart.classList.remove('hidden');
     if (footer) footer.style.display = 'block';
-    // Restore side panel
-    if (sidePanel) {
-      sidePanel.style.display = 'flex';
-      sidePanel.style.visibility = '';
-      sidePanel.classList.remove('call-hidden');
-    }
-    if (sidePanelToggle) {
-      const isClosed = sidePanel.classList.contains('closed');
-      sidePanelToggle.style.display = isClosed ? 'flex' : 'none';
-      sidePanelToggle.style.visibility = '';
-      sidePanelToggle.classList.remove('call-hidden');
-    }
-    return; // CRITICAL: Do not proceed if microphone permission fails
+    if (sidePanel) sidePanel.style.display = 'flex';
+    if (sidePanelToggle) sidePanelToggle.style.display = 'flex';
+    return; 
   }
 
-  // ===== STEP 3: INITIALIZE AUDIOCONTEXT (SAFE - Only after microphone is granted) =====
+  // 4. NOW it is safe to wake up AudioContext
   try {
     const AudioContext = window.AudioContext || window.webkitAudioContext;
     if (AudioContext) {
       const ctx = new AudioContext();
-      await ctx.resume();
-      ctx.close(); // Clean up immediately
-      console.log('✅ AudioContext initialized successfully after microphone permission');
+      await ctx.resume(); 
+      // Keep ctx alive or close it based on need, but resume is key
     }
   } catch (e) {
-    console.warn("⚠️ AudioContext initialization failed (non-critical):", e);
-    // Don't fail the entire session if AudioContext fails - microphone is already granted
+    console.warn("AudioContext wakeup warning:", e);
   }
-  
-  updateStatus('Connecting to AI service...', 'connecting');
 
+  // 5. Connect to Backend
+  updateStatus('Connecting to AI service...', 'connecting');
+  
   try {
     const cfgRes = await fetch('/config', {cache:'no-store'});
     if (!cfgRes.ok) throw new Error('Failed to fetch configuration');
     const cfg = await cfgRes.json();
     
-    const response = await fetch('/conversation-token');
-    if (!response.ok) throw new Error('Token request failed');
-    const data = await response.json();
-    const token = data.token;
+    const tokenRes = await fetch('/conversation-token');
+    if (!tokenRes.ok) throw new Error('Token request failed');
+    const tokenData = await tokenRes.json();
 
     console.log('🎙️ Starting conversation...');
     
@@ -1148,7 +1115,7 @@ async function startVoiceSession() {
       }
     }, 30000); // Increased to 30 seconds for VPS latency
 
-    // --- START SESSION ---
+    // Start ElevenLabs Session
     conversation = await Conversation.startSession({
       agentId: cfg.agentId,
       conversationToken: token,
@@ -1457,25 +1424,9 @@ async function startVoiceSession() {
     });
 
   } catch (error) {
-    console.error("❌ Failed to start:", error);
-    updateStatus('Connection Failed', 'default');
-    alert('Could not connect: ' + error.message);
-    if (screens.call) screens.call.classList.add('hidden');
-    if (screens.ronitStart) screens.ronitStart.classList.remove('hidden');
-    if (footer) footer.style.display = 'block';
-    // Restore side panel
-    if (sidePanel) {
-      sidePanel.style.display = 'flex';
-      sidePanel.style.visibility = '';
-      sidePanel.classList.remove('call-hidden');
-      // Restore toggle button visibility based on panel state
-      const isClosed = sidePanel.classList.contains('closed');
-      if (sidePanelToggle) {
-        sidePanelToggle.style.display = isClosed ? 'flex' : 'none';
-        sidePanelToggle.style.visibility = '';
-        sidePanelToggle.classList.remove('call-hidden');
-      }
-    }
+    console.error("Connection failed:", error);
+    alert("Connection failed: " + error.message);
+    endSession(); // Graceful exit
   }
 }
 
