@@ -8,29 +8,26 @@ yourdomain.com {
     
     # Reverse proxy to Flask app running on port 5000
     reverse_proxy localhost:5000 {
-        # WebSocket support (CRITICAL for ElevenLabs real-time communication)
-        # Caddy v2 automatically handles WebSocket upgrades, but we ensure it's explicit
+        # WebSocket support
         header_up Connection {>Connection}
         header_up Upgrade {>Upgrade}
         
-        # Long timeout for WebSocket connections (ElevenLabs sessions can be long)
-        # This prevents premature disconnections during voice calls
+        # Long timeout for WebSocket connections
         transport http {
             dial_timeout 10s
-            response_header_timeout 60s  # Increased for long WebSocket sessions
-            idle_timeout 90s            # Keep idle connections alive longer
+            response_header_timeout 120s 
+            idle_timeout 120s
         }
         
-        # Forward proper headers for IP tracking and security
+        # Forward proper headers
         header_up X-Real-IP {remote_host}
         header_up X-Forwarded-For {remote_host}
         header_up X-Forwarded-Proto {scheme}
         header_up Host {host}
-        header_up X-Forwarded-Host {host}
         
-        # Health check endpoint (helps Caddy monitor backend health)
-        health_uri /health
-        health_interval 10s
+        # Health check
+        health_uri /healthz
+        health_interval 30s
         health_timeout 5s
         health_status 200
     }

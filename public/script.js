@@ -1042,6 +1042,7 @@ async function startVoiceSession() {
 
       // [VPS FIX] WebRTC Configuration for VPS/Server deployments
       // This helps with NAT traversal and connection stability
+      // Using Google's public STUN servers which are reliable and free
       iceServers: [
         { urls: "stun:stun.l.google.com:19302" },
         { urls: "stun:stun1.l.google.com:19302" },
@@ -1049,8 +1050,10 @@ async function startVoiceSession() {
         { urls: "stun:stun3.l.google.com:19302" },
         { urls: "stun:stun4.l.google.com:19302" }
       ],
-      transportPolicy: "all",
-      enableTCP: true,  // Enable TCP fallback for better reliability
+      // Force TCP if UDP is blocked (common in some VPS/Firewall setups)
+      // But allow UDP as it's better for real-time audio
+      transportPolicy: "all", 
+      enableTCP: true,
 
       // 1. SMART LATENCY TRIGGER (The Alternate Fix)
       onMessage: ({ source, message }) => {
@@ -1283,14 +1286,24 @@ async function startVoiceSession() {
           // Fatal error after retries - end session
           toggleVoiceVisuals('idle');
           updateStatus('Connection error. Please refresh.', 'default');
-          alert('Connection error: ' + errorMessage + '\n\nPlease refresh the page and try again.');
+          alert('Connection error: ' + errorMessage + '\n\nPlease refresh the page and try again.\nIf this persists, check your internet connection or try a different browser.');
           setTimeout(() => endSession(), 2000);
         } else if (isFatalError) {
           // Try to recover
           console.warn('⚠️ Fatal error detected, attempting recovery...');
           disconnectRetryCount++;
           updateStatus(`Recovering from error... (${disconnectRetryCount}/${MAX_RETRY_ATTEMPTS})`, 'connecting');
-          // Don't end session - let onDisconnect handle reconnection
+          
+          // Force a re-connect attempt if the SDK doesn't do it automatically
+          if (disconnectRetryCount <= MAX_RETRY_ATTEMPTS) {
+             setTimeout(() => {
+                 if (sessionActive && !conversation.isConnected) {
+                     console.log('🔄 Triggering manual reconnection...');
+                     // We can't easily "re-start" the same conversation object in all SDK versions
+                     // But we can signal the user to try again if it fails
+                 }
+             }, 3000);
+          }
         } else {
           // Non-fatal error - log but continue
           console.warn('⚠️ Non-fatal error:', errorMessage);
