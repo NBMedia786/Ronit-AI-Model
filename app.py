@@ -1584,6 +1584,71 @@ def reset_user_data(email: str):
     })
 
 # ===== Application Startup =====
+@app.post("/api/auth/google")
+@limiter.limit("20 per hour")
+def google_auth():
+    """Handle Google Sign-In with Strict Gmail Enforcement."""
+    data = request.get_json(silent=True) or {}
+    email = (data.get("email") or "").strip().lower()
+    name = (data.get("name") or "").strip()
+    
+    if not email:
+        raise AppError("Email is required", status_code=400)
+
+    # --- [NEW] STRICT GMAIL CHECK ---
+    # This blocks anyone who is not using a generic @gmail.com account
+    if not email.endswith("@gmail.com"):
+        logger.warning(f"Blocked non-gmail signup attempt: {email}")
+        return jsonify({
+            "ok": False, 
+            "message": "Access restricted: Please sign in with a valid @gmail.com account."
+        }), 403
+    # --------------------------------
+
+    # Check if user exists in Supabase
+    user = get_user(email)
+    
+    if user:
+        # Existing user: Update login time and name
+        update_user(email, {
+            "last_login": datetime.now(timezone.utc).isoformat(),
+            "name": name or user.get("name")
+        })
+        logger.info(f"Google user logged in: {email}")
+        return jsonify({
+            "ok": True,
+            "message": "Login successful",
+            "email": email,
+            "name": user.get("name") or name,
+            "talktime": user.get("talktime", 0)
+        })
+    else:
+        # New user: Create account with Welcome Bonus
+        user_data = {
+            "email": email,
+            "name": name,
+            "password_hash": None,  # Google users don't need a password
+            "talktime": 180,        # 3 Minutes Free Bonus
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "last_login": datetime.now(timezone.utc).isoformat(),
+            "sessions": [],
+            "total_sessions": 0,
+            "welcome_bonus_given": True,
+            "welcome_bonus_date": datetime.now(timezone.utc).isoformat()
+        }
+        
+        if update_user(email, user_data):
+            logger.info(f"New Google user signed up: {email}")
+            return jsonify({
+                "ok": True,
+                "message": "Account created successfully",
+                "email": email,
+                "name": name,
+                "talktime": 180
+            })
+        else:
+            raise AppError("Failed to create Google account", status_code=500)
+
 if __name__ == "__main__":
     logger.info("=" * 60)
     logger.info("Starting Ronit AI Voice Coach Application")
