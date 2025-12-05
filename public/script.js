@@ -640,10 +640,15 @@ async function requestMicrophonePermission() {
       throw new Error('getUserMedia is not supported in this browser. Please use Chrome, Firefox, or Edge.');
     }
 
-    // [PRODUCTION FIX] Request and immediately release to avoid Windows driver locks
+    // [FIX] Request permission to unlock browser permissions
+    // We'll keep a minimal stream alive until SDK connects, then release it
     console.log('🎤 Requesting microphone permission...');
     const constraints = {
-      audio: true // Let the browser handle everything
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true
+      }
     };
     
     const stream = await navigator.mediaDevices.getUserMedia(constraints);
@@ -663,11 +668,11 @@ async function requestMicrophonePermission() {
       settings: audioTracks[0].getSettings()
     });
     
-    // [PRODUCTION FIX] Release stream immediately - ElevenLabs SDK will request its own
-    // This prevents Windows Realtek driver conflicts
-    stream.getTracks().forEach(track => track.stop());
-    userMediaStream = null; // Clear reference
+    // [FIX] Store stream temporarily - will be released when SDK connects
+    // This ensures browser permissions are unlocked for the SDK
+    userMediaStream = stream;
     
+    // Return success - stream will be managed by SDK after connection
     return true;
   } catch (err) {
     console.error('❌ Microphone permission error:', err);
@@ -764,6 +769,18 @@ function toggleMicrophone() {
       } else {
         conversation.setConversationTurnDetection({ enabled: true });
         console.log('🎤 Turn detection enabled - agent can process user input');
+        
+        // [FIX] Also ensure microphone tracks are enabled when unmuting
+        if (userMediaStream) {
+          userMediaStream.getAudioTracks().forEach(track => {
+            if (track.readyState === 'live') {
+              track.enabled = true;
+              console.log(`✅ Enabled audio track: ${track.label}`);
+            } else {
+              console.warn(`⚠️ Track not live: ${track.label}, state: ${track.readyState}`);
+            }
+          });
+        }
       }
     } catch (e) {
       console.warn('⚠️ Could not update conversation turn detection:', e);
@@ -1044,20 +1061,63 @@ async function startVoiceSession() {
         disconnectRetryCount = 0; // Reset retry count on successful connection
         lastConnectionTime = Date.now();
         
-        // [PRODUCTION FIX] Setup Media Stream - let SDK handle it
+        // [FIX] Setup Media Stream - SDK should have its own stream now
         try {
+          // Try to get the SDK's stream (it should have requested its own)
           if (conversation && typeof conversation.getLocalStream === 'function') {
             const localStream = conversation.getLocalStream();
             if (localStream) {
+              console.log('✅ Using SDK stream for microphone control');
+              // Release our temporary permission stream
+              if (userMediaStream && userMediaStream !== localStream) {
+                userMediaStream.getTracks().forEach(track => track.stop());
+              }
               userMediaStream = localStream;
               // Ensure tracks are enabled
               localStream.getAudioTracks().forEach(track => {
+                track.enabled = !isMicMuted;
+                console.log(`🎤 Audio track enabled: ${track.enabled}, label: ${track.label}`);
+              });
+            } else {
+              console.warn('⚠️ SDK stream not available, keeping permission stream');
+              // Keep the permission stream if SDK doesn't provide one
+              if (userMediaStream) {
+                userMediaStream.getAudioTracks().forEach(track => {
+                  track.enabled = !isMicMuted;
+                });
+              }
+            }
+          } else {
+            console.warn('⚠️ getLocalStream not available, using permission stream');
+            // Fallback: use our permission stream
+            if (userMediaStream) {
+              userMediaStream.getAudioTracks().forEach(track => {
                 track.enabled = !isMicMuted;
               });
             }
           }
         } catch (e) {
-          console.warn('⚠️ Could not get local stream:', e);
+          console.error('❌ Error setting up media stream:', e);
+          // Keep permission stream as fallback
+          if (userMediaStream) {
+            userMediaStream.getAudioTracks().forEach(track => {
+              track.enabled = !isMicMuted;
+            });
+          }
+        }
+        
+        // Verify microphone is actually working
+        if (userMediaStream) {
+          const tracks = userMediaStream.getAudioTracks();
+          const activeTracks = tracks.filter(t => t.readyState === 'live' && t.enabled);
+          console.log(`🎤 Microphone status: ${activeTracks.length} active track(s) out of ${tracks.length} total`);
+          if (activeTracks.length === 0) {
+            console.error('❌ No active microphone tracks! Bot will not hear you.');
+            updateStatus('⚠️ Microphone not active - check browser permissions', 'default');
+          }
+        } else {
+          console.error('❌ No microphone stream available! Bot will not hear you.');
+          updateStatus('⚠️ Microphone not available - check browser permissions', 'default');
         }
         
         updateMicButtonState(false);
@@ -1067,6 +1127,13 @@ async function startVoiceSession() {
           if (sessionActive && isMicMuted && userMediaStream) {
             userMediaStream.getAudioTracks().forEach(track => {
               track.enabled = false;
+            });
+          } else if (sessionActive && !isMicMuted && userMediaStream) {
+            // Ensure tracks stay enabled when unmuted
+            userMediaStream.getAudioTracks().forEach(track => {
+              if (track.readyState === 'live') {
+                track.enabled = true;
+              }
             });
           }
         }, 2000);
@@ -1086,10 +1153,21 @@ async function startVoiceSession() {
         updateStatus('Connected', 'default');
         setTimeout(() => { toggleVoiceVisuals('listening'); }, 100);
         
+        // [FIX] Ensure turn detection is enabled on connect
+        if (conversation) {
+          try {
+            conversation.setConversationTurnDetection({ enabled: true });
+            console.log('✅ Turn detection enabled on connection');
+          } catch (e) {
+            console.warn('⚠️ Could not enable turn detection:', e);
+          }
+        }
+        
         startTimer();
         startTalkTimeTracking();
         
         console.log('✅ Session connected successfully');
+        console.log('🎤 Microphone should now be active - try speaking to the bot!');
       },
 
       onDisconnect: () => {
