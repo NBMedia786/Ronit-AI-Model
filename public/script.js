@@ -1121,21 +1121,15 @@ async function startVoiceSession() {
     }, 30000); // Increased to 30 seconds for VPS latency
 
     // Start ElevenLabs Session
+    console.log('🔑 Using token:', token.substring(0, 10) + '...');
+    
     conversation = await Conversation.startSession({
       agentId: cfg.agentId,
       conversationToken: token,
       
-      // OPTIMIZATION: Lower latency configuration
-      overrides: {
-        agent: {
-          prompt: {
-            // Lower temperature makes responses faster and more concise
-            temperature: 0.5 
-          },
-          firstMessage: "Hello, I am Ronit. How can I help you today?" // Pre-caching the first message
-        }
-      },
-
+      // [FIX] Removing overrides to ensure stability
+      // overrides: { ... }
+      
       // 1. SMART LATENCY TRIGGER (The Alternate Fix)
       onMessage: ({ source, message }) => {
         const speaker = source === 'user' ? 'User' : 'Coach';
