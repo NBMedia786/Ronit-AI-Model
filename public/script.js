@@ -1037,21 +1037,7 @@ function enforceMicMuteState() {
 }
 
 async function startVoiceSession() {
-  // ---------------------------------------------------------
-  // [FIX] Wake up Audio Context immediately on user click
-  // This prevents the browser from blocking audio due to network delay
-  try {
-    const AudioContext = window.AudioContext || window.webkitAudioContext;
-    if (AudioContext) {
-      const ctx = new AudioContext();
-      await ctx.resume();
-      ctx.close(); // Clean up immediately
-    }
-  } catch (e) {
-    console.warn("AudioContext wake-up failed", e);
-  }
-  // ---------------------------------------------------------
-
+  // Initialize state variables
   userTranscript = "";
   timeRemaining = 180;
   totalTalkTime = 0;
@@ -1060,7 +1046,7 @@ async function startVoiceSession() {
   // [REMOVED] lastMessageTime - No longer needed for visual sync
   // Visual status is now 100% driven by actual audio volume data
   
-  // UI Setup
+  // ===== STEP 1: UI PREPARATION =====
   if (screens.loading) screens.loading.classList.add('hidden');
   if (screens.call) {
     screens.call.classList.remove('hidden');
@@ -1099,6 +1085,8 @@ async function startVoiceSession() {
 
   updateStatus('Requesting microphone access...', 'connecting');
 
+  // ===== STEP 2: REQUEST MICROPHONE PERMISSION FIRST (CRITICAL) =====
+  // This MUST happen before any AudioContext initialization to avoid race conditions
   const permissionResult = await requestMicrophonePermission();
   if (permissionResult !== true) {
     // Display specific error message from the permission request
@@ -1120,7 +1108,21 @@ async function startVoiceSession() {
       sidePanelToggle.style.visibility = '';
       sidePanelToggle.classList.remove('call-hidden');
     }
-    return;
+    return; // CRITICAL: Do not proceed if microphone permission fails
+  }
+
+  // ===== STEP 3: INITIALIZE AUDIOCONTEXT (SAFE - Only after microphone is granted) =====
+  try {
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    if (AudioContext) {
+      const ctx = new AudioContext();
+      await ctx.resume();
+      ctx.close(); // Clean up immediately
+      console.log('✅ AudioContext initialized successfully after microphone permission');
+    }
+  } catch (e) {
+    console.warn("⚠️ AudioContext initialization failed (non-critical):", e);
+    // Don't fail the entire session if AudioContext fails - microphone is already granted
   }
   
   updateStatus('Connecting to AI service...', 'connecting');
