@@ -1,5 +1,42 @@
 import { Conversation } from "https://cdn.jsdelivr.net/npm/@11labs/client/+esm";
 
+// --- Authentication Helper ---
+/**
+ * Authenticated fetch helper that automatically injects JWT token
+ * and handles 401 redirects to login page.
+ */
+async function authenticatedFetch(url, options = {}) {
+  const token = sessionStorage.getItem('authToken');
+  
+  if (!token) {
+    console.warn('No auth token found, redirecting to login');
+    window.location.href = '/login.html';
+    return Promise.reject(new Error('No authentication token'));
+  }
+  
+  // Merge headers
+  const headers = {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${token}`,
+    ...options.headers
+  };
+  
+  const response = await fetch(url, {
+    ...options,
+    headers
+  });
+  
+  // Handle 401 Unauthorized - redirect to login
+  if (response.status === 401) {
+    console.warn('Authentication failed, redirecting to login');
+    sessionStorage.clear();
+    window.location.href = '/login.html';
+    return Promise.reject(new Error('Authentication failed'));
+  }
+  
+  return response;
+}
+
 // --- State ---
 let conversation;
 let userTranscript = "";
@@ -215,20 +252,17 @@ document.addEventListener('DOMContentLoaded', () => {
   
   // Force immediate refresh on page load to sync with server
   setTimeout(() => {
-    const email = sessionStorage.getItem('userEmail');
-    if (email) {
-      fetch(`/api/user/talktime?email=${encodeURIComponent(email)}`)
-        .then(res => res.json())
-        .then(data => {
-          if (data.ok && data.talktime !== undefined) {
-            const serverTalktime = data.talktime || 0;
-            sessionStorage.setItem('userTalktime', serverTalktime.toString());
-            updateTalktimeDisplay(serverTalktime);
-            console.log(`🔄 Initial talktime sync: ${serverTalktime}s`);
-          }
-        })
-        .catch(err => console.warn('⚠️ Initial sync failed:', err));
-    }
+    authenticatedFetch('/api/user/talktime')
+      .then(res => res.json())
+      .then(data => {
+        if (data.ok && data.talktime !== undefined) {
+          const serverTalktime = data.talktime || 0;
+          sessionStorage.setItem('userTalktime', serverTalktime.toString());
+          updateTalktimeDisplay(serverTalktime);
+          console.log(`🔄 Initial talktime sync: ${serverTalktime}s`);
+        }
+      })
+      .catch(err => console.warn('⚠️ Initial sync failed:', err));
   }, 1000); // Wait 1 second after page load
   
   // Start periodic online status ping (every 60 seconds) to keep user marked as online
@@ -528,7 +562,7 @@ function initializePaymentModal() {
         }
         
         // Create order for talktime purchase
-        const response = await fetch('/api/payments/razorpay/order', {
+        const response = await authenticatedFetch('/api/payments/razorpay/order', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -555,14 +589,13 @@ function initializePaymentModal() {
           handler: async function (response) {
             try {
               // Verify payment
-              const verifyResponse = await fetch('/api/payments/razorpay/verify', {
+              const verifyResponse = await authenticatedFetch('/api/payments/razorpay/verify', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                   razorpay_order_id: response.razorpay_order_id,
                   razorpay_payment_id: response.razorpay_payment_id,
-                  razorpay_signature: response.razorpay_signature,
-                  email: sessionStorage.getItem('userEmail') // Add email for backend to credit talktime
+                  razorpay_signature: response.razorpay_signature
                 })
               });
               
@@ -634,113 +667,201 @@ function initializePaymentModal() {
 // --- Voice Logic ---
 
 async function requestMicrophonePermission() {
-  try {
-    // Check if getUserMedia is available
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      throw new Error('getUserMedia is not supported in this browser. Please use Chrome, Firefox, or Edge.');
-    }
-
-    // [FIX] Check if permission is already granted before requesting
-    let permissionStatus = 'prompt';
-    try {
-      if (navigator.permissions && navigator.permissions.query) {
-        const result = await navigator.permissions.query({ name: 'microphone' });
-        permissionStatus = result.state;
-        console.log('🎤 Current microphone permission status:', permissionStatus);
-        
-        // If already granted, we can proceed without prompting
-        if (permissionStatus === 'granted') {
-          console.log('✅ Microphone permission already granted - will access without prompt');
-        } else if (permissionStatus === 'denied') {
-          throw new Error('Microphone permission was denied. Please enable it in browser settings.');
-        }
-      }
-    } catch (permErr) {
-      // Permissions API might not be supported, continue with getUserMedia
-      console.log('⚠️ Permissions API not available, will check via getUserMedia');
-    }
-
-    // [FIX] Check if we already have an active stream
-    if (userMediaStream) {
-      const activeTracks = userMediaStream.getAudioTracks().filter(t => t.readyState === 'live');
-      if (activeTracks.length > 0) {
-        console.log('✅ Reusing existing microphone stream');
-        return true;
-      }
-    }
-
-    // [FIX] Request permission to unlock browser permissions
-    // We'll keep a minimal stream alive until SDK connects, then release it
-    if (permissionStatus === 'granted') {
-      console.log('🎤 Permission already granted, accessing microphone...');
-    } else {
-      console.log('🎤 Requesting microphone permission...');
-    }
-    
-    const constraints = {
-      audio: {
-        echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl: true
-      }
+  // Check if getUserMedia is available
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    return {
+      success: false,
+      error: 'getUserMedia is not supported in this browser. Please use Chrome, Firefox, or Edge.'
     };
-    
-    // This will not prompt if permission is already granted
-    const stream = await navigator.mediaDevices.getUserMedia(constraints);
-    
-    // Check if we actually got audio tracks
-    const audioTracks = stream.getAudioTracks();
-    if (audioTracks.length === 0) {
-      stream.getTracks().forEach(track => track.stop());
-      throw new Error('No audio tracks available');
+  }
+
+  // Check if permission is already granted before requesting
+  let permissionStatus = 'prompt';
+  try {
+    if (navigator.permissions && navigator.permissions.query) {
+      const result = await navigator.permissions.query({ name: 'microphone' });
+      permissionStatus = result.state;
+      console.log('🎤 Current microphone permission status:', permissionStatus);
+      
+      // Only return early if permission is explicitly denied
+      // Even if granted, we still need to try getUserMedia as hardware issues can occur
+      if (permissionStatus === 'denied') {
+        return {
+          success: false,
+          error: 'Microphone permission was denied. Please enable it in browser settings.\n\n' +
+                 'To fix this in Chrome:\n' +
+                 '1. Click the lock icon (🔒) in the address bar\n' +
+                 '2. Set "Microphone" to "Allow"\n' +
+                 '3. Refresh the page and try again'
+        };
+      } else if (permissionStatus === 'granted') {
+        console.log('✅ Microphone permission already granted - will attempt to access microphone');
+      }
     }
-    
-    console.log('✅ Microphone permission granted');
-    console.log('📊 Audio track info:', {
-      label: audioTracks[0].label,
-      enabled: audioTracks[0].enabled,
-      readyState: audioTracks[0].readyState,
-      settings: audioTracks[0].getSettings()
-    });
-    
-    // [FIX] Store stream temporarily - will be released when SDK connects
-    // This ensures browser permissions are unlocked for the SDK
-    userMediaStream = stream;
-    
-    // Return success - stream will be managed by SDK after connection
-    return true;
+  } catch (permErr) {
+    // Permissions API might not be supported, continue with getUserMedia
+    console.log('⚠️ Permissions API not available, will check via getUserMedia');
+  }
+
+  // Check if we already have an active stream
+  if (userMediaStream) {
+    const activeTracks = userMediaStream.getAudioTracks().filter(t => t.readyState === 'live');
+    if (activeTracks.length > 0 && userMediaStream.active) {
+      console.log('✅ Reusing existing microphone stream');
+      return true;
+    } else {
+      // Clean up inactive stream
+      console.log('🧹 Cleaning up inactive stream');
+      userMediaStream.getTracks().forEach(track => track.stop());
+      userMediaStream = null;
+    }
+  }
+
+  // Attempt 1: Try with high-quality constraints
+  const highQualityConstraints = {
+    audio: {
+      echoCancellation: true,
+      noiseSuppression: true,
+      autoGainControl: true
+    }
+  };
+
+  let stream = null;
+  let lastError = null;
+
+  try {
+    console.log('🎤 Attempt 1: Requesting microphone with high-quality constraints...');
+    stream = await navigator.mediaDevices.getUserMedia(highQualityConstraints);
+    console.log('✅ High-quality constraints succeeded');
   } catch (err) {
-    console.error('❌ Microphone permission error:', err);
-    
-    // Provide detailed error messages
-    let errorMessage = 'Microphone access denied. ';
-    if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-      errorMessage += 'Please allow microphone access in your browser settings.\n\n';
-      errorMessage += 'To fix this in Chrome:\n';
-      errorMessage += '1. Click the lock icon (🔒) in the address bar\n';
-      errorMessage += '2. Set "Microphone" to "Allow"\n';
-      errorMessage += '3. Refresh the page and try again';
-    } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
-      errorMessage += 'No microphone found. Please connect a microphone and try again.';
-    } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
-      errorMessage += 'Microphone is being used by another application. Please close other apps using the microphone.';
-    } else if (err.name === 'OverconstrainedError' || err.name === 'ConstraintNotSatisfiedError') {
-      errorMessage += 'Microphone does not meet requirements. Trying with basic settings...';
-      // Try again with basic constraints
+    console.warn('⚠️ High-quality constraints failed:', err.name, err.message);
+    lastError = err;
+
+    // If NotReadableError or OverconstrainedError, try fallback (do not fail immediately)
+    if (err.name === 'NotReadableError' || err.name === 'OverconstrainedError' || 
+        err.name === 'TrackStartError' || err.name === 'ConstraintNotSatisfiedError') {
+      
+      console.log('🔄 Attempt 2: Trying with minimal constraints...');
+      
+      // Attempt 2: Try with minimal constraints
       try {
-        const basicStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        basicStream.getTracks().forEach(track => track.stop());
-        return true;
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        console.log('✅ Minimal constraints succeeded');
       } catch (retryErr) {
-        errorMessage = 'Could not access microphone. Please check your device settings.';
+        console.error('❌ Minimal constraints also failed:', retryErr.name, retryErr.message);
+        lastError = retryErr;
+        
+        // Generate specific error message based on error type
+        let errorMessage = '';
+        if (retryErr.name === 'NotAllowedError' || retryErr.name === 'PermissionDeniedError') {
+          errorMessage = 'Microphone permission denied. Please allow microphone access in your browser settings.\n\n' +
+                        'To fix this in Chrome:\n' +
+                        '1. Click the lock icon (🔒) in the address bar\n' +
+                        '2. Set "Microphone" to "Allow"\n' +
+                        '3. Refresh the page and try again';
+        } else if (retryErr.name === 'NotFoundError' || retryErr.name === 'DevicesNotFoundError') {
+          errorMessage = 'No microphone found. Please connect a microphone and try again.';
+        } else if (retryErr.name === 'NotReadableError' || retryErr.name === 'TrackStartError') {
+          errorMessage = 'Could not start audio source. Is another app using the microphone? Please close other applications using the microphone and try again.';
+        } else if (retryErr.name === 'OverconstrainedError' || retryErr.name === 'ConstraintNotSatisfiedError') {
+          errorMessage = 'Microphone does not meet the required specifications. Please check your device settings or try a different microphone.';
+        } else {
+          errorMessage = `Could not access microphone: ${retryErr.message || 'Unknown error occurred'}. Please check your device settings.`;
+        }
+        
+        return { success: false, error: errorMessage };
       }
     } else {
-      errorMessage += err.message || 'Unknown error occurred.';
+      // For other errors (NotAllowedError, NotFoundError, etc.), return immediately
+      let errorMessage = '';
+      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+        errorMessage = 'Microphone permission denied. Please allow microphone access in your browser settings.\n\n' +
+                      'To fix this in Chrome:\n' +
+                      '1. Click the lock icon (🔒) in the address bar\n' +
+                      '2. Set "Microphone" to "Allow"\n' +
+                      '3. Refresh the page and try again';
+      } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+        errorMessage = 'No microphone found. Please connect a microphone and try again.';
+      } else {
+        errorMessage = `Could not access microphone: ${err.message || 'Unknown error occurred'}. Please check your device settings.`;
+      }
+      
+      return { success: false, error: errorMessage };
+    }
+  }
+
+  // Verify stream is fully active before proceeding
+  if (!stream) {
+    return {
+      success: false,
+      error: 'Failed to obtain microphone stream. Please try again.'
+    };
+  }
+
+  // Check if we actually got audio tracks
+  const audioTracks = stream.getAudioTracks();
+  if (audioTracks.length === 0) {
+    stream.getTracks().forEach(track => track.stop());
+    return {
+      success: false,
+      error: 'No audio tracks available. Please check your microphone connection.'
+    };
+  }
+
+  // WebRTC Connection Safeguard: Verify stream is active and tracks are live
+  // Add a small delay to allow stream to fully activate (some hardware needs time)
+  let activationAttempts = 0;
+  const maxActivationAttempts = 10;
+  const activationDelay = 100; // 100ms between checks
+
+  while (activationAttempts < maxActivationAttempts) {
+    if (stream.active) {
+      const liveTracks = audioTracks.filter(t => t.readyState === 'live');
+      if (liveTracks.length > 0) {
+        console.log(`✅ Stream activated after ${activationAttempts * activationDelay}ms`);
+        break;
+      }
     }
     
-    console.error('Error details:', errorMessage);
-    return { success: false, error: errorMessage };
+    activationAttempts++;
+    if (activationAttempts < maxActivationAttempts) {
+      await new Promise(resolve => setTimeout(resolve, activationDelay));
+    }
   }
+
+  // Final verification after waiting period
+  if (!stream.active) {
+    stream.getTracks().forEach(track => track.stop());
+    return {
+      success: false,
+      error: 'Microphone stream did not become active. Please check your microphone connection and try again.'
+    };
+  }
+
+  const liveTracks = audioTracks.filter(t => t.readyState === 'live');
+  if (liveTracks.length === 0) {
+    stream.getTracks().forEach(track => track.stop());
+    return {
+      success: false,
+      error: 'Microphone tracks did not become live. Please check your microphone and try again.'
+    };
+  }
+
+  console.log('✅ Microphone permission granted and stream verified');
+  console.log('📊 Audio track info:', {
+    label: audioTracks[0].label,
+    enabled: audioTracks[0].enabled,
+    readyState: audioTracks[0].readyState,
+    streamActive: stream.active,
+    liveTracksCount: liveTracks.length,
+    totalTracksCount: audioTracks.length,
+    settings: audioTracks[0].getSettings()
+  });
+
+  // Store stream - will be managed by SDK after connection
+  userMediaStream = stream;
+
+  return true;
 }
 
 // --- Microphone Mute/Unmute Functions ---
@@ -980,8 +1101,10 @@ async function startVoiceSession() {
 
   const permissionResult = await requestMicrophonePermission();
   if (permissionResult !== true) {
+    // Display specific error message from the permission request
+    const errorMessage = permissionResult?.error || 'Microphone access is required. Please allow access and try again.';
     updateStatus('Microphone Access Required', 'default');
-    alert('Microphone access is required. Please allow access and try again.');
+    alert(errorMessage);
     if (screens.call) screens.call.classList.add('hidden');
     if (screens.ronitStart) screens.ronitStart.classList.remove('hidden');
     if (footer) footer.style.display = 'block';
@@ -1116,22 +1239,36 @@ async function startVoiceSession() {
           // Try to get the SDK's stream (it should have requested its own)
           if (conversation && typeof conversation.getLocalStream === 'function') {
             const localStream = conversation.getLocalStream();
-            if (localStream) {
-              console.log('✅ Using SDK stream for microphone control');
-              // Release our temporary permission stream
-              if (userMediaStream && userMediaStream !== localStream) {
-                userMediaStream.getTracks().forEach(track => track.stop());
+            if (localStream && localStream.active) {
+              // Verify SDK stream is fully active
+              const sdkTracks = localStream.getAudioTracks();
+              const liveSdkTracks = sdkTracks.filter(t => t.readyState === 'live');
+              
+              if (liveSdkTracks.length > 0) {
+                console.log('✅ Using SDK stream for microphone control');
+                // Release our temporary permission stream
+                if (userMediaStream && userMediaStream !== localStream) {
+                  userMediaStream.getTracks().forEach(track => track.stop());
+                }
+                userMediaStream = localStream;
+                // Ensure tracks are enabled
+                localStream.getAudioTracks().forEach(track => {
+                  track.enabled = !isMicMuted;
+                  console.log(`🎤 Audio track enabled: ${track.enabled}, label: ${track.label}, state: ${track.readyState}`);
+                });
+              } else {
+                console.warn('⚠️ SDK stream not fully active, keeping permission stream');
+                // Keep the permission stream if SDK stream is not ready
+                if (userMediaStream && userMediaStream.active) {
+                  userMediaStream.getAudioTracks().forEach(track => {
+                    track.enabled = !isMicMuted;
+                  });
+                }
               }
-              userMediaStream = localStream;
-              // Ensure tracks are enabled
-              localStream.getAudioTracks().forEach(track => {
-                track.enabled = !isMicMuted;
-                console.log(`🎤 Audio track enabled: ${track.enabled}, label: ${track.label}`);
-              });
             } else {
-              console.warn('⚠️ SDK stream not available, keeping permission stream');
+              console.warn('⚠️ SDK stream not available or inactive, keeping permission stream');
               // Keep the permission stream if SDK doesn't provide one
-              if (userMediaStream) {
+              if (userMediaStream && userMediaStream.active) {
                 userMediaStream.getAudioTracks().forEach(track => {
                   track.enabled = !isMicMuted;
                 });
@@ -1140,7 +1277,7 @@ async function startVoiceSession() {
           } else {
             console.warn('⚠️ getLocalStream not available, using permission stream');
             // Fallback: use our permission stream
-            if (userMediaStream) {
+            if (userMediaStream && userMediaStream.active) {
               userMediaStream.getAudioTracks().forEach(track => {
                 track.enabled = !isMicMuted;
               });
@@ -1149,7 +1286,7 @@ async function startVoiceSession() {
         } catch (e) {
           console.error('❌ Error setting up media stream:', e);
           // Keep permission stream as fallback
-          if (userMediaStream) {
+          if (userMediaStream && userMediaStream.active) {
             userMediaStream.getAudioTracks().forEach(track => {
               track.enabled = !isMicMuted;
             });
@@ -1158,12 +1295,17 @@ async function startVoiceSession() {
         
         // Verify microphone is actually working
         if (userMediaStream) {
-          const tracks = userMediaStream.getAudioTracks();
-          const activeTracks = tracks.filter(t => t.readyState === 'live' && t.enabled);
-          console.log(`🎤 Microphone status: ${activeTracks.length} active track(s) out of ${tracks.length} total`);
-          if (activeTracks.length === 0) {
-            console.error('❌ No active microphone tracks! Bot will not hear you.');
-            updateStatus('⚠️ Microphone not active - check browser permissions', 'default');
+          if (!userMediaStream.active) {
+            console.error('❌ Microphone stream is not active! Bot will not hear you.');
+            updateStatus('⚠️ Microphone stream inactive - check browser permissions', 'default');
+          } else {
+            const tracks = userMediaStream.getAudioTracks();
+            const activeTracks = tracks.filter(t => t.readyState === 'live' && t.enabled && t.readyState === 'live');
+            console.log(`🎤 Microphone status: ${activeTracks.length} active track(s) out of ${tracks.length} total`);
+            if (activeTracks.length === 0) {
+              console.error('❌ No active microphone tracks! Bot will not hear you.');
+              updateStatus('⚠️ Microphone not active - check browser permissions', 'default');
+            }
           }
         } else {
           console.error('❌ No microphone stream available! Bot will not hear you.');
@@ -1461,13 +1603,12 @@ function startTalkTimeTracking() {
       }
 
       try {
-        console.log('💓 Sending heartbeat...', { email, seconds: HEARTBEAT_RATE / 1000 });
+        console.log('💓 Sending heartbeat...', { seconds: HEARTBEAT_RATE / 1000 });
         // Send heartbeat to deduct 5 seconds
-        const response = await fetch('/api/user/deduct-time', {
+        const response = await authenticatedFetch('/api/user/deduct-time', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ 
-            email: email,
             seconds: HEARTBEAT_RATE / 1000 
           })
         });
@@ -1571,9 +1712,8 @@ async function initializeTalktime() {
   
   // Check with backend and get talktime (includes welcome bonus if new user)
   try {
-    const response = await fetch(`/api/user/talktime?email=${encodeURIComponent(email)}`, {
-      method: 'GET',
-      headers: { 'Content-Type': 'application/json' }
+    const response = await authenticatedFetch('/api/user/talktime', {
+      method: 'GET'
     });
     
     const data = await response.json();
@@ -1626,12 +1766,9 @@ function startTalktimeRefresh() {
   
   // Refresh talktime every 30 seconds
   talktimeRefreshInterval = setInterval(async () => {
-    const email = sessionStorage.getItem('userEmail');
-    if (!email) return; // No email, skip refresh
-    
     try {
       // Fetch current talktime from server
-      const response = await fetch(`/api/user/talktime?email=${encodeURIComponent(email)}`);
+      const response = await authenticatedFetch('/api/user/talktime');
       if (!response.ok) {
         console.warn('⚠️ Failed to refresh talktime:', response.status);
         return;
@@ -1679,15 +1816,10 @@ function startOnlinePing() {
   
   // Ping server every 60 seconds to update last_login
   onlinePingInterval = setInterval(async () => {
-    const email = sessionStorage.getItem('userEmail');
-    if (!email) return; // No email, skip ping
-    
     try {
       // Ping server to update last_login (keeps user marked as online)
-      const response = await fetch('/api/user/ping', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email })
+      const response = await authenticatedFetch('/api/user/ping', {
+        method: 'POST'
       });
       
       if (!response.ok) {
@@ -1853,14 +1985,13 @@ async function handleBuyTalktime() {
       handler: async function(response) {
         try {
           // Verify payment
-          const verifyResponse = await fetch('/api/payments/razorpay/verify', {
+          const verifyResponse = await authenticatedFetch('/api/payments/razorpay/verify', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               razorpay_order_id: response.razorpay_order_id,
               razorpay_payment_id: response.razorpay_payment_id,
-              razorpay_signature: response.razorpay_signature,
-              email: sessionStorage.getItem('userEmail') // Add email for backend to credit talktime
+              razorpay_signature: response.razorpay_signature
             })
           });
           
@@ -1935,7 +2066,7 @@ async function handleBuyTalkTime() {
 async function proceedWithPayment() {
   try {
     // Create order for talk time purchase (30 minutes = 1800 seconds)
-    const response = await fetch('/api/payments/razorpay/order', {
+    const response = await authenticatedFetch('/api/payments/razorpay/order', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -1963,14 +2094,13 @@ async function proceedWithPayment() {
       handler: async function(response) {
         try {
           // Verify payment
-          const verifyResponse = await fetch('/api/payments/razorpay/verify', {
+          const verifyResponse = await authenticatedFetch('/api/payments/razorpay/verify', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               razorpay_order_id: response.razorpay_order_id,
               razorpay_payment_id: response.razorpay_payment_id,
-              razorpay_signature: response.razorpay_signature,
-              email: sessionStorage.getItem('userEmail') // Add email for backend to credit talktime
+              razorpay_signature: response.razorpay_signature
             })
           });
           
@@ -2154,13 +2284,13 @@ async function endSession() {
   const emailInput = document.getElementById('userEmail');
   const email = emailInput ? emailInput.value?.trim() : '';
   
-  if (userTranscript && email) {
+  if (userTranscript) {
     try {
       updateStatus('Saving session and generating care plan...', 'default');
-      const response = await fetch('/upload-session', {
+      const response = await authenticatedFetch('/upload-session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({ email, transcript: userTranscript })
+        body: new URLSearchParams({ transcript: userTranscript })
       });
       
       if (response.ok) {

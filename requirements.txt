@@ -12,6 +12,12 @@ postgrest
 httpx>=0.27.0
 protobuf>=5.28.0
 h11>=0.16.0
+# JWT Authentication
+PyJWT>=2.8.0
+# Google OAuth Verification
+google-auth>=2.23.0
+google-auth-oauthlib>=1.1.0
+google-auth-httplib2>=0.1.1
 flask
 flask-limiter
 python-dotenv

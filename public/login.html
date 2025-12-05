@@ -400,35 +400,27 @@
     // Handle Google Sign-In callback
     async function handleGoogleSignIn(response) {
       try {
-        // 1. Decode Google Token
-        const payload = JSON.parse(atob(response.credential.split('.')[1]));
-        const userEmail = payload.email;
-        const userName = payload.name || payload.given_name || userEmail.split('@')[0];
-        const userPicture = payload.picture || null;
+        // Send raw credential to backend for server-side verification
+        console.log('Sending Google credential to backend for verification...');
         
-        // 2. SHOW LOADING (Optional but good UX)
-        console.log('Sending Google data to backend...');
-        
-        // 3. SEND TO BACKEND (This was missing!)
         const res = await fetch('/api/auth/google', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ 
-                email: userEmail, 
-                name: userName 
+                credential: response.credential  // Send raw credential, not decoded
             })
         });
         
         const data = await res.json();
         
-        // 4. Handle Success/Fail
-        if (data.ok) {
-            // Save to Session Storage
-            sessionStorage.setItem('userEmail', userEmail);
-            sessionStorage.setItem('userName', userName);
-            if (userPicture) sessionStorage.setItem('userPicture', userPicture);
+        // Handle Success/Fail
+        if (data.ok && data.token) {
+            // Store app-generated JWT token
+            sessionStorage.setItem('authToken', data.token);
             
-            // Save Talktime from Backend
+            // Save user data to Session Storage
+            sessionStorage.setItem('userEmail', data.email);
+            sessionStorage.setItem('userName', data.name || data.email.split('@')[0]);
             sessionStorage.setItem('userTalktime', data.talktime.toString());
             sessionStorage.setItem('isLoggedIn', 'true');
             

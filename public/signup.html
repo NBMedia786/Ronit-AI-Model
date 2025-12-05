@@ -140,26 +140,25 @@
     // 3. Handle Sign Up (Send to Backend)
     async function handleGoogleSignUp(response) {
       try {
-        const payload = JSON.parse(atob(response.credential.split('.')[1]));
-        
-        // Backend Call to Create/Login User
+        // Send raw credential to backend for server-side verification
         const res = await fetch('/api/auth/google', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ 
-                email: payload.email, 
-                name: payload.name 
+                credential: response.credential  // Send raw credential, not decoded
             })
         });
         
         const data = await res.json();
         
-        if (data.ok) {
-            sessionStorage.setItem('userEmail', payload.email);
-            sessionStorage.setItem('userName', payload.name);
+        if (data.ok && data.token) {
+            // Store app-generated JWT token
+            sessionStorage.setItem('authToken', data.token);
+            
+            sessionStorage.setItem('userEmail', data.email);
+            sessionStorage.setItem('userName', data.name || data.email.split('@')[0]);
             sessionStorage.setItem('userTalktime', data.talktime.toString());
             sessionStorage.setItem('isLoggedIn', 'true');
-            if (payload.picture) sessionStorage.setItem('userPicture', payload.picture);
             
             window.location.href = '/';
         } else {

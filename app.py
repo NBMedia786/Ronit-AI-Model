@@ -33,6 +33,9 @@ from requests.adapters import HTTPAdapter, Retry
 from supabase import create_client, Client
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.middleware.proxy_fix import ProxyFix
+import jwt
+from google.oauth2 import id_token
+from google.auth.transport import requests as google_requests
 
 # Load environment variables
 load_dotenv()
@@ -99,6 +102,11 @@ class Config:
     # Google OAuth Configuration
     GOOGLE_CLIENT_ID = (os.getenv("GOOGLE_CLIENT_ID") or "").strip()
     
+    # JWT Configuration
+    JWT_SECRET_KEY = (os.getenv("JWT_SECRET_KEY") or os.getenv("SECRET_KEY") or os.urandom(32).hex()).strip()
+    JWT_ALGORITHM = "HS256"
+    JWT_EXPIRATION_HOURS = 24
+    
     # Supabase Configuration
     SUPABASE_URL = (os.getenv("SUPABASE_URL") or "").strip()
     SUPABASE_KEY = (os.getenv("SUPABASE_KEY") or os.getenv("SUPABASE_SERVICE_ROLE_KEY") or "").strip()
@@ -126,9 +134,9 @@ if Config.SUPABASE_URL and Config.SUPABASE_KEY:
         logger.info("✅ Supabase client initialized successfully")
     except Exception as e:
         logger.error(f"❌ Failed to initialize Supabase client: {e}")
-        logger.warning("⚠️ Falling back to JSON file storage")
+        raise RuntimeError("Supabase connection is required. Application cannot start without database connection.")
 else:
-    logger.warning("⚠️ Supabase credentials not configured. Using JSON file storage.")
+    raise RuntimeError("Supabase credentials not configured. SUPABASE_URL and SUPABASE_KEY are required.")
 
 # ===== Security Headers =====
 @app.after_request
@@ -348,149 +356,134 @@ def _get_eleven_token() -> str:
     logger.error("All token endpoints failed", extra={"attempts": tried})
     raise AppError("Failed to retrieve token from ElevenLabs", status_code=502, details={"attempts": tried})
 
-# ===== User Data Storage (Supabase) =====
-USERS_FILE = DATA_DIR / "users.json"  # Fallback for JSON storage
+# ===== JWT Authentication =====
+def create_token(email: str) -> str:
+    """Create a JWT token for the user with 24-hour expiration."""
+    payload = {
+        "email": email.lower(),
+        "exp": datetime.now(timezone.utc) + timedelta(hours=Config.JWT_EXPIRATION_HOURS),
+        "iat": datetime.now(timezone.utc)
+    }
+    token = jwt.encode(payload, Config.JWT_SECRET_KEY, algorithm=Config.JWT_ALGORITHM)
+    return token
 
+def token_required(f):
+    """Decorator to verify JWT token from Authorization header."""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        auth_header = request.headers.get("Authorization", "")
+        
+        if not auth_header.startswith("Bearer "):
+            raise AppError("Missing or invalid authorization header", status_code=401)
+        
+        token = auth_header.replace("Bearer ", "").strip()
+        
+        try:
+            payload = jwt.decode(token, Config.JWT_SECRET_KEY, algorithms=[Config.JWT_ALGORITHM])
+            current_user_email = payload.get("email")
+            
+            if not current_user_email:
+                raise AppError("Invalid token payload", status_code=401)
+            
+            # Inject current_user_email into the route function
+            return f(*args, current_user_email=current_user_email, **kwargs)
+            
+        except jwt.ExpiredSignatureError:
+            raise AppError("Token has expired", status_code=401)
+        except jwt.InvalidTokenError as e:
+            logger.warning(f"Invalid token: {e}")
+            raise AppError("Invalid token", status_code=401)
+        except Exception as e:
+            logger.exception(f"Token verification error: {e}")
+            raise AppError("Token verification failed", status_code=401)
+    
+    return decorated_function
+
+# ===== User Data Storage (Supabase Only - No JSON Fallback) =====
 def load_users() -> Dict[str, Any]:
-    """Load all users from Supabase or JSON file (fallback)."""
-    if supabase:
-        try:
-            response = supabase.table("users").select("*").execute()
-            users_dict = {}
-            for user in response.data:
-                email_lower = user.get("email", "").lower()
-                if email_lower:
-                    users_dict[email_lower] = user
-            return users_dict
-        except Exception as e:
-            logger.exception(f"Failed to load users from Supabase: {e}")
-            logger.warning("Falling back to JSON file storage")
+    """Load all users from Supabase. Raises error if Supabase is not available."""
+    if not supabase:
+        raise RuntimeError("Supabase connection is required")
     
-    # Fallback to JSON file
-    if not USERS_FILE.exists():
-        return {}
     try:
-        with open(USERS_FILE, 'r', encoding='utf-8') as f:
-            return json.load(f)
+        response = supabase.table("users").select("*").execute()
+        users_dict = {}
+        for user in response.data:
+            email_lower = user.get("email", "").lower()
+            if email_lower:
+                users_dict[email_lower] = user
+        return users_dict
     except Exception as e:
-        logger.exception(f"Failed to load users from JSON: {e}")
-        return {}
-
-def save_users(users: Dict[str, Any]) -> bool:
-    """Save users to Supabase or JSON file (fallback)."""
-    if supabase:
-        try:
-            # Upsert all users
-            for email_lower, user_data in users.items():
-                # Ensure email is lowercase for consistency
-                user_data["email"] = email_lower
-                supabase.table("users").upsert(user_data).execute()
-            return True
-        except Exception as e:
-            logger.exception(f"Failed to save users to Supabase: {e}")
-            logger.warning("Falling back to JSON file storage")
-    
-    # Fallback to JSON file
-    try:
-        with open(USERS_FILE, 'w', encoding='utf-8') as f:
-            json.dump(users, f, indent=2, ensure_ascii=False)
-        return True
-    except Exception as e:
-        logger.exception(f"Failed to save users to JSON: {e}")
-        return False
+        logger.exception(f"Failed to load users from Supabase: {e}")
+        raise AppError("Database error: Failed to load users", status_code=500)
 
 def get_user(email: str) -> Optional[Dict[str, Any]]:
-    """Get user data by email from Supabase or JSON file."""
+    """Get user data by email from Supabase. Raises error if Supabase is not available."""
     email_lower = email.lower()
     
-    if supabase:
-        try:
-            response = supabase.table("users").select("*").eq("email", email_lower).execute()
-            if response.data:
-                return response.data[0]
-            return None
-        except Exception as e:
-            logger.exception(f"Failed to get user from Supabase: {e}")
-            logger.warning("Falling back to JSON file storage")
+    if not supabase:
+        raise RuntimeError("Supabase connection is required")
     
-    # Fallback to JSON file
-    users = load_users()
-    return users.get(email_lower)
+    try:
+        response = supabase.table("users").select("*").eq("email", email_lower).execute()
+        if response.data:
+            return response.data[0]
+        return None
+    except Exception as e:
+        logger.exception(f"Failed to get user from Supabase: {e}")
+        raise AppError("Database error: Failed to get user", status_code=500)
 
 def update_user(email: str, data: Dict[str, Any]) -> bool:
-    """Update or create user data in Supabase or JSON file."""
+    """Update or create user data in Supabase. Raises error if Supabase is not available."""
     email_lower = email.lower()
     
-    if supabase:
-        try:
-            # Check if user exists
-            existing_user = get_user(email)
-            
-            user_data = {
-                "email": email_lower,
-                "updated_at": datetime.now(timezone.utc).isoformat()
-            }
-            
-            if not existing_user:
-                # New user - set defaults
-                user_data.update({
-                    "talktime": 0,
-                    "created_at": datetime.now(timezone.utc).isoformat(),
-                    "last_login": None,
-                    "sessions": [],
-                    "total_sessions": 0,
-                    "welcome_bonus_given": False,
-                    "password_hash": None  # Will be set during signup
-                })
-            
-            # Update with provided data
-            user_data.update(data)
-            
-            # FIXED: Added on_conflict="email"
-            supabase.table("users").upsert(user_data, on_conflict="email").execute()
-            return True
-            
-        except Exception as e:
-            # THIS WAS MISSING
-            logger.exception(f"Failed to update user in Supabase: {e}")
-            logger.warning("Falling back to JSON file storage")
+    if not supabase:
+        raise RuntimeError("Supabase connection is required")
     
-    # Fallback to JSON file
-    users = load_users()
-    is_new_user = email_lower not in users
-    if is_new_user:
-        users[email_lower] = {
-            "email": email,
-            "talktime": 0,
-            "created_at": datetime.now(timezone.utc).isoformat(),
-            "last_login": None,
-            "sessions": [],
-            "total_sessions": 0,
-            "welcome_bonus_given": False,
-            "password_hash": None  # Will be set during signup
+    try:
+        # Check if user exists
+        existing_user = get_user(email)
+        
+        user_data = {
+            "email": email_lower,
+            "updated_at": datetime.now(timezone.utc).isoformat()
         }
-    users[email_lower].update(data)
-    users[email_lower]["updated_at"] = datetime.now(timezone.utc).isoformat()
-    return save_users(users)
+        
+        if not existing_user:
+            # New user - set defaults
+            user_data.update({
+                "talktime": 0,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "last_login": None,
+                "sessions": [],
+                "total_sessions": 0,
+                "welcome_bonus_given": False,
+                "password_hash": None  # Will be set during signup
+            })
+        
+        # Update with provided data
+        user_data.update(data)
+        
+        supabase.table("users").upsert(user_data, on_conflict="email").execute()
+        return True
+        
+    except Exception as e:
+        logger.exception(f"Failed to update user in Supabase: {e}")
+        raise AppError("Database error: Failed to update user", status_code=500)
 
 def delete_user(email: str) -> bool:
-    """Delete user by email from Supabase or JSON file."""
+    """Delete user by email from Supabase. Raises error if Supabase is not available."""
     email_lower = email.lower()
     
-    if supabase:
-        try:
-            supabase.table("users").delete().eq("email", email_lower).execute()
-            return True
-        except Exception as e:
-            logger.exception(f"Failed to delete user from Supabase: {e}")
-            logger.warning("Falling back to JSON file storage")
+    if not supabase:
+        raise RuntimeError("Supabase connection is required")
     
-    # Fallback to JSON file
-    users = load_users()
-    if email_lower in users:
-        del users[email_lower]
-        return save_users(users)
-    return False
+    try:
+        supabase.table("users").delete().eq("email", email_lower).execute()
+        return True
+    except Exception as e:
+        logger.exception(f"Failed to delete user from Supabase: {e}")
+        raise AppError("Database error: Failed to delete user", status_code=500)
 
 def add_talktime_to_user(email: str, amount: int) -> bool:
     """Add talktime to user."""
@@ -533,39 +526,65 @@ def record_user_session(email: str, session_data: Dict[str, Any]) -> bool:
         "last_login": datetime.now(timezone.utc).isoformat()
     })
 
-# ===== Blueprint Storage =====
+# ===== Blueprint Storage (Supabase) =====
 def save_blueprint_to_disk(blueprint_id: str, data: Dict[str, Any]) -> bool:
-    """Save blueprint to disk as JSON file."""
+    """Save blueprint to Supabase database."""
     if not validate_blueprint_id(blueprint_id):
         logger.error(f"Invalid blueprint_id format: {blueprint_id}")
         return False
     
-    file_path = DATA_DIR / f"blueprint_{blueprint_id}.json"
+    if not supabase:
+        logger.error("Supabase connection is required for blueprint storage")
+        raise RuntimeError("Supabase connection is required")
+    
     try:
-        with open(file_path, 'w', encoding='utf-8') as f:
-            json.dump(data, f, indent=2, ensure_ascii=False)
-        logger.info(f"Blueprint saved: {blueprint_id}")
+        # Map data fields to Supabase schema
+        blueprint_record = {
+            "id": blueprint_id,
+            "user_email": data.get("email", ""),
+            "session_id": data.get("session_id", ""),
+            "content": data.get("content", ""),
+            "transcript": data.get("transcript", ""),  # Include transcript if provided
+            "created_at": data.get("created", datetime.now(timezone.utc).isoformat())
+        }
+        
+        # Insert or update blueprint in Supabase
+        supabase.table("blueprints").upsert(blueprint_record, on_conflict="id").execute()
+        logger.info(f"Blueprint saved to Supabase: {blueprint_id}")
         return True
     except Exception as e:
-        logger.exception(f"Failed to save blueprint {blueprint_id}: {e}")
-        return False
+        logger.exception(f"Failed to save blueprint {blueprint_id} to Supabase: {e}")
+        raise AppError("Database error: Failed to save blueprint", status_code=500)
 
 def load_blueprint_from_disk(blueprint_id: str) -> Optional[Dict[str, Any]]:
-    """Load blueprint from disk JSON file."""
+    """Load blueprint from Supabase database."""
     if not validate_blueprint_id(blueprint_id):
         logger.warning(f"Invalid blueprint_id format: {blueprint_id}")
         return None
     
-    file_path = DATA_DIR / f"blueprint_{blueprint_id}.json"
-    if not file_path.exists():
-        return None
+    if not supabase:
+        logger.error("Supabase connection is required for blueprint storage")
+        raise RuntimeError("Supabase connection is required")
     
     try:
-        with open(file_path, 'r', encoding='utf-8') as f:
-            return json.load(f)
+        # Query blueprint from Supabase
+        response = supabase.table("blueprints").select("*").eq("id", blueprint_id).execute()
+        
+        if not response.data or len(response.data) == 0:
+            return None
+        
+        blueprint_record = response.data[0]
+        
+        # Return in the format expected by view_blueprint route
+        return {
+            "content": blueprint_record.get("content", ""),
+            "email": blueprint_record.get("user_email", ""),
+            "session_id": blueprint_record.get("session_id", ""),
+            "created": blueprint_record.get("created_at", "")
+        }
     except Exception as e:
-        logger.exception(f"Failed to load blueprint {blueprint_id}: {e}")
-        return None
+        logger.exception(f"Failed to load blueprint {blueprint_id} from Supabase: {e}")
+        raise AppError("Database error: Failed to load blueprint", status_code=500)
 
 # ===== Email Functions =====
 def _send_email(to_email: str, subject: str, body: str) -> bool:
@@ -839,17 +858,18 @@ def signup():
     if name:
         user_data["name"] = name
     
-    success = update_user(email, user_data)
+    update_user(email, user_data)
     
-    if success:
-        logger.info(f"New user signed up: {email}")
-        return jsonify({
-            "ok": True,
-            "message": "Account created successfully! You can now login.",
-            "email": email
-        })
-    else:
-        raise AppError("Failed to create account. Please try again.", status_code=500)
+    # Generate JWT token for new user
+    app_token = create_token(email)
+    
+    logger.info(f"New user signed up: {email}")
+    return jsonify({
+        "ok": True,
+        "message": "Account created successfully! You can now login.",
+        "token": app_token,
+        "email": email
+    })
 
 @app.post("/api/auth/login")
 @limiter.limit("10 per hour")
@@ -885,10 +905,14 @@ def login():
         "last_login": datetime.now(timezone.utc).isoformat()
     })
     
+    # Generate JWT token
+    app_token = create_token(email)
+    
     logger.info(f"User logged in: {email}")
     return jsonify({
         "ok": True,
         "message": "Login successful",
+        "token": app_token,
         "email": email,
         "name": user.get("name") or email.split("@")[0],
         "talktime": user.get("talktime", 0)
@@ -896,18 +920,15 @@ def login():
 
 @app.get("/api/user/talktime")
 @limiter.limit("50 per hour")
-def get_user_talktime():
-    """Get user talktime by email."""
-    email = request.args.get("email", "").strip()
-    if not email or not validate_email(email):
-        raise AppError("Valid email required", status_code=400)
-    
-    user = get_user(email)
+@token_required
+def get_user_talktime(current_user_email: str):
+    """Get user talktime. Email is extracted from JWT token."""
+    user = get_user(current_user_email)
     if user:
         return jsonify({
             "ok": True,
             "talktime": user.get("talktime", 0),
-            "email": email,
+            "email": current_user_email,
             "is_new": False
         })
     else:
@@ -916,19 +937,16 @@ def get_user_talktime():
 
 @app.post("/api/user/talktime")
 @limiter.limit("100 per hour")
-def sync_user_talktime():
-    """Sync user talktime from frontend."""
+@token_required
+def sync_user_talktime(current_user_email: str):
+    """Sync user talktime from frontend. Email is extracted from JWT token."""
     data = request.get_json(silent=True) or {}
-    email = (data.get("email") or "").strip()
     talktime = int(data.get("talktime", 0))
-    
-    if not email or not validate_email(email):
-        raise AppError("Valid email required", status_code=400)
     
     if talktime < 0:
         raise AppError("Talktime cannot be negative", status_code=400)
     
-    set_user_talktime(email, talktime)
+    set_user_talktime(current_user_email, talktime)
     return jsonify({
         "ok": True,
         "message": "Talktime synced",
@@ -937,16 +955,13 @@ def sync_user_talktime():
 
 @app.post("/api/user/deduct-time")
 @limiter.limit("100 per minute")  # Allow frequent updates
-def deduct_session_time():
-    """Securely deduct time during an active call (Heartbeat)."""
+@token_required
+def deduct_session_time(current_user_email: str):
+    """Securely deduct time during an active call (Heartbeat). Email is extracted from JWT token."""
     data = request.get_json(silent=True) or {}
-    email = (data.get("email") or "").strip()
     seconds_to_deduct = int(data.get("seconds", 5))  # Default to heartbeat interval
-    
-    if not email or not validate_email(email):
-        raise AppError("Valid email required", status_code=400)
         
-    user = get_user(email)
+    user = get_user(current_user_email)
     if not user:
         raise AppError("User not found", status_code=404)
         
@@ -963,7 +978,7 @@ def deduct_session_time():
         
     # Deduct time
     new_balance = max(0, current_balance - seconds_to_deduct)
-    update_user(email, {"talktime": new_balance})
+    update_user(current_user_email, {"talktime": new_balance})
     
     return jsonify({
         "ok": True,
@@ -982,21 +997,16 @@ def health_check():
 
 @app.post("/api/user/ping")
 @limiter.limit("60 per hour")  # Allow frequent pings
-def user_ping():
-    """Update user's last_login to keep them marked as online."""
-    data = request.get_json(silent=True) or {}
-    email = (data.get("email") or "").strip().lower()
-    
-    if not email or not validate_email(email):
-        raise AppError("Valid email required", status_code=400)
-    
+@token_required
+def user_ping(current_user_email: str):
+    """Update user's last_login to keep them marked as online. Email is extracted from JWT token."""
     # Check if user exists
-    user = get_user(email)
+    user = get_user(current_user_email)
     if not user:
         raise AppError("User not found", status_code=404)
     
     # Update last_login to current time (keeps user marked as online)
-    update_user(email, {
+    update_user(current_user_email, {
         "last_login": datetime.now(timezone.utc).isoformat()
     })
     
@@ -1052,18 +1062,12 @@ def conversation_token():
 
 @app.post("/upload-session")
 @limiter.limit("10 per hour")
-def upload_session():
-    """Upload session transcript and generate care plan."""
-    email = (request.form.get("email") or "").strip()
+@token_required
+def upload_session(current_user_email: str):
+    """Upload session transcript and generate care plan. Email is extracted from JWT token."""
     transcript = (request.form.get("transcript") or "").strip()
     
     # Validate input
-    if not email:
-        raise AppError("Missing email address", status_code=400)
-    
-    if not validate_email(email):
-        raise AppError("Invalid email address format", status_code=400)
-    
     if not transcript:
         raise AppError("Missing transcript", status_code=400)
     
@@ -1077,15 +1081,6 @@ def upload_session():
     session_id = str(uuid.uuid4())[:8]
     blueprint_id = f"{timestamp}_{session_id}"
     
-    # Save transcript to disk
-    try:
-        transcript_path = DATA_DIR / f"session_{blueprint_id}.txt"
-        transcript_path.write_text(transcript, encoding="utf-8")
-        logger.info(f"Transcript saved: {blueprint_id}")
-    except Exception as e:
-        logger.exception(f"Failed to save transcript: {e}")
-        # Continue anyway, transcript is in memory
-    
     # Generate care plan
     try:
         care_plan = _call_gemini_mindmap_blueprint(transcript)
@@ -1093,27 +1088,31 @@ def upload_session():
         logger.exception(f"Failed to generate care plan: {e}")
         raise AppError("Failed to generate care plan", status_code=500)
     
-    # Save blueprint
+    # Save blueprint with transcript to Supabase
     blueprint_data = {
         "content": care_plan,
-        "email": email,
+        "email": current_user_email,
         "created": datetime.now(timezone.utc).isoformat(),
         "session_id": session_id,
+        "transcript": transcript  # Include transcript in blueprint data for persistence
     }
     
-    if not save_blueprint_to_disk(blueprint_id, blueprint_data):
-        logger.error(f"Failed to save blueprint: {blueprint_id}")
+    try:
+        save_blueprint_to_disk(blueprint_id, blueprint_data)
+        logger.info(f"Blueprint and transcript saved to Supabase: {blueprint_id}")
+    except Exception as e:
+        logger.error(f"Failed to save blueprint: {blueprint_id}, error: {e}")
         raise AppError("Failed to save care plan", status_code=500)
     
     # Record user session
     try:
-        record_user_session(email, {
+        record_user_session(current_user_email, {
             "session_id": session_id,
             "duration": len(transcript) // 100,  # Rough estimate
             "transcript_length": len(transcript)
         })
     except Exception as e:
-        logger.warning(f"Failed to record session for {email}: {e}")
+        logger.warning(f"Failed to record session for {current_user_email}: {e}")
     
     # Schedule email
     care_plan_link = f"{request.host_url.rstrip('/')}/blueprint/{blueprint_id}"
@@ -1121,7 +1120,7 @@ def upload_session():
     
     threading.Thread(
         target=_delayed_email_with_link,
-        args=(email, care_plan_link, delay_seconds),
+        args=(current_user_email, care_plan_link, delay_seconds),
         daemon=True,
     ).start()
     
@@ -1271,8 +1270,9 @@ def create_razorpay_order():
 
 @app.post("/api/payments/razorpay/verify")
 @limiter.limit("20 per hour")
-def verify_razorpay_payment():
-    """Verify Razorpay payment and add talktime."""
+@token_required
+def verify_razorpay_payment(current_user_email: str):
+    """Verify Razorpay payment and add talktime. Email is extracted from JWT token."""
     try:
         data = request.get_json(silent=True) or {}
         
@@ -1280,7 +1280,6 @@ def verify_razorpay_payment():
         razorpay_order_id = data.get("razorpay_order_id")
         razorpay_payment_id = data.get("razorpay_payment_id")
         razorpay_signature = data.get("razorpay_signature")
-        email = data.get("email")  # Get email from frontend
         
         if not all([razorpay_order_id, razorpay_payment_id, razorpay_signature]):
             raise AppError("Missing payment details", status_code=400)
@@ -1297,18 +1296,14 @@ def verify_razorpay_payment():
             raise AppError("Invalid payment signature", status_code=400)
 
         # Add Talktime (100 credits)
-        if email:
-            add_talktime_to_user(email, 100)
-            user = get_user(email)
-            logger.info(f"Payment verified for {email}. New balance: {user.get('talktime')}")
-            return jsonify({
-                "ok": True, 
-                "message": "Payment verified", 
-                "new_talktime": user.get("talktime")
-            })
-        else:
-            logger.warning("Payment verified but no email provided")
-            return jsonify({"ok": True, "warning": "User email missing"})
+        add_talktime_to_user(current_user_email, 100)
+        user = get_user(current_user_email)
+        logger.info(f"Payment verified for {current_user_email}. New balance: {user.get('talktime')}")
+        return jsonify({
+            "ok": True, 
+            "message": "Payment verified", 
+            "new_talktime": user.get("talktime")
+        })
             
     except Exception as e:
         logger.exception("Payment verification failed")
@@ -1606,67 +1601,90 @@ def reset_user_data(email: str):
 @app.post("/api/auth/google")
 @limiter.limit("20 per hour")
 def google_auth():
-    """Handle Google Sign-In with Strict Gmail Enforcement."""
+    """Handle Google Sign-In with server-side credential verification."""
     data = request.get_json(silent=True) or {}
-    email = (data.get("email") or "").strip().lower()
-    name = (data.get("name") or "").strip()
+    credential = data.get("credential", "").strip()
     
-    if not email:
-        raise AppError("Email is required", status_code=400)
-
-    # --- [NEW] STRICT GMAIL CHECK ---
-    # This blocks anyone who is not using a generic @gmail.com account
-    if not email.endswith("@gmail.com"):
-        logger.warning(f"Blocked non-gmail signup attempt: {email}")
-        return jsonify({
-            "ok": False, 
-            "message": "Access restricted: Please sign in with a valid @gmail.com account."
-        }), 403
-    # --------------------------------
-
-    # Check if user exists in Supabase
-    user = get_user(email)
+    if not credential:
+        raise AppError("Google credential is required", status_code=400)
     
-    if user:
-        # Existing user: Update login time and name
-        update_user(email, {
-            "last_login": datetime.now(timezone.utc).isoformat(),
-            "name": name or user.get("name")
-        })
-        logger.info(f"Google user logged in: {email}")
-        return jsonify({
-            "ok": True,
-            "message": "Login successful",
-            "email": email,
-            "name": user.get("name") or name,
-            "talktime": user.get("talktime", 0)
-        })
-    else:
-        # New user: Create account with Welcome Bonus
-        user_data = {
-            "email": email,
-            "name": name,
-            "password_hash": None,  # Google users don't need a password
-            "talktime": 180,        # 3 Minutes Free Bonus
-            "created_at": datetime.now(timezone.utc).isoformat(),
-            "last_login": datetime.now(timezone.utc).isoformat(),
-            "sessions": [],
-            "total_sessions": 0,
-            "welcome_bonus_given": True,
-            "welcome_bonus_date": datetime.now(timezone.utc).isoformat()
-        }
+    if not Config.GOOGLE_CLIENT_ID:
+        raise AppError("Google OAuth not configured", status_code=500)
+    
+    try:
+        # Verify the Google credential server-side
+        idinfo = id_token.verify_oauth2_token(
+            credential,
+            google_requests.Request(),
+            Config.GOOGLE_CLIENT_ID
+        )
         
-        if update_user(email, user_data):
+        # Extract user information from verified token
+        email = idinfo.get("email", "").strip().lower()
+        name = idinfo.get("name", "").strip()
+        
+        if not email:
+            raise AppError("Email not found in Google credential", status_code=400)
+        
+        # Check if user exists in Supabase
+        user = get_user(email)
+        
+        if user:
+            # Existing user: Update login time and name
+            update_user(email, {
+                "last_login": datetime.now(timezone.utc).isoformat(),
+                "name": name or user.get("name")
+            })
+            logger.info(f"Google user logged in: {email}")
+            
+            # Generate app JWT token
+            app_token = create_token(email)
+            
+            return jsonify({
+                "ok": True,
+                "message": "Login successful",
+                "token": app_token,
+                "email": email,
+                "name": user.get("name") or name,
+                "talktime": user.get("talktime", 0)
+            })
+        else:
+            # New user: Create account with Welcome Bonus
+            user_data = {
+                "email": email,
+                "name": name,
+                "password_hash": None,  # Google users don't need a password
+                "talktime": 180,        # 3 Minutes Free Bonus
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "last_login": datetime.now(timezone.utc).isoformat(),
+                "sessions": [],
+                "total_sessions": 0,
+                "welcome_bonus_given": True,
+                "welcome_bonus_date": datetime.now(timezone.utc).isoformat()
+            }
+            
+            update_user(email, user_data)
             logger.info(f"New Google user signed up: {email}")
+            
+            # Generate app JWT token
+            app_token = create_token(email)
+            
             return jsonify({
                 "ok": True,
                 "message": "Account created successfully",
+                "token": app_token,
                 "email": email,
                 "name": name,
                 "talktime": 180
             })
-        else:
-            raise AppError("Failed to create Google account", status_code=500)
+            
+    except ValueError as e:
+        # Invalid token
+        logger.warning(f"Invalid Google credential: {e}")
+        raise AppError("Invalid Google credential", status_code=401)
+    except Exception as e:
+        logger.exception(f"Google authentication error: {e}")
+        raise AppError("Google authentication failed", status_code=500)
 
 if __name__ == "__main__":
     logger.info("=" * 60)
