@@ -151,8 +151,12 @@ def set_cors_headers(response):
     if origin and (not allowed_origins or origin in allowed_origins or "*" in allowed_origins):
         response.headers['Access-Control-Allow-Origin'] = origin if origin != "*" else "*"
         response.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
-        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, Upgrade, Connection'
         response.headers['Access-Control-Max-Age'] = '3600'
+        # WebSocket support headers
+        if request.headers.get('Upgrade') == 'websocket':
+            response.headers['Connection'] = 'Upgrade'
+            response.headers['Upgrade'] = 'websocket'
     
     return response
 
@@ -966,6 +970,15 @@ def deduct_session_time():
         "status": "active",
         "remaining": new_balance
     })
+
+@app.get("/health")
+def health_check():
+    """Health check endpoint for Caddy and PM2 monitoring."""
+    return jsonify({
+        "status": "healthy",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "service": "ronit-ai-coach"
+    }), 200
 
 @app.post("/api/user/ping")
 @limiter.limit("60 per hour")  # Allow frequent pings

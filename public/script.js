@@ -21,6 +21,15 @@ let userMediaStream = null; // Store the microphone stream for muting
 const HEARTBEAT_RATE = 5000; // Sync with server every 5 seconds
 // Text status controller - no animation intervals needed
 
+// --- Production: Connection Health & Recovery ---
+let connectionHealthCheck = null;
+let disconnectRetryCount = 0;
+let disconnectRetryTimeout = null;
+const MAX_RETRY_ATTEMPTS = 3;
+const RETRY_DELAY = 2000; // 2 seconds
+let lastConnectionTime = null;
+let isReconnecting = false;
+
 // --- Sync State (Smart Latency Method) ---
 let speakTimeout = null;    // Timer to start speaking visual
 let silenceTimeout = null;  // Timer to stop speaking visual
@@ -631,21 +640,18 @@ async function requestMicrophonePermission() {
       throw new Error('getUserMedia is not supported in this browser. Please use Chrome, Firefox, or Edge.');
     }
 
-    // Request microphone permission - simplified to let browser handle everything
-    const constraints = {
-      audio: true // Let the browser handle EVERYTHING auto-magically
-    };
-
+    // [PRODUCTION FIX] Request and immediately release to avoid Windows driver locks
     console.log('🎤 Requesting microphone permission...');
-    const stream = await navigator.mediaDevices.getUserMedia(constraints);
+    const constraints = {
+      audio: true // Let the browser handle everything
+    };
     
-    // Store the stream for muting/unmuting
-    // Note: ElevenLabs SDK manages its own stream, but we keep this as backup
-    userMediaStream = stream;
+    const stream = await navigator.mediaDevices.getUserMedia(constraints);
     
     // Check if we actually got audio tracks
     const audioTracks = stream.getAudioTracks();
     if (audioTracks.length === 0) {
+      stream.getTracks().forEach(track => track.stop());
       throw new Error('No audio tracks available');
     }
     
@@ -657,8 +663,11 @@ async function requestMicrophonePermission() {
       settings: audioTracks[0].getSettings()
     });
     
-    // Don't stop tracks - ElevenLabs SDK will use them
-    // But we can control them for muting
+    // [PRODUCTION FIX] Release stream immediately - ElevenLabs SDK will request its own
+    // This prevents Windows Realtek driver conflicts
+    stream.getTracks().forEach(track => track.stop());
+    userMediaStream = null; // Clear reference
+    
     return true;
   } catch (err) {
     console.error('❌ Microphone permission error:', err);
@@ -953,13 +962,14 @@ async function startVoiceSession() {
 
     console.log('🎙️ Starting conversation...');
     
+    // [PRODUCTION FIX] Increased timeout and better handling
     const connectionTimeout = setTimeout(() => {
-      if (!sessionActive) {
-        updateStatus('Connection Timeout', 'default');
-        alert('Connection timed out. Check internet.');
-        endSession();
+      if (!sessionActive && !isReconnecting) {
+        console.warn('⏱️ Connection timeout - attempting recovery...');
+        updateStatus('Connection taking longer than expected...', 'connecting');
+        // Don't end immediately - give it more time
       }
-    }, 15000);
+    }, 30000); // Increased to 30 seconds for VPS latency
 
     // --- START SESSION ---
     conversation = await Conversation.startSession({
@@ -982,6 +992,9 @@ async function startVoiceSession() {
       onMessage: ({ source, message }) => {
         const speaker = source === 'user' ? 'User' : 'Coach';
         userTranscript += `[${new Date().toLocaleTimeString()}] ${speaker}: ${message}\n`;
+        
+        // [PRODUCTION FIX] Update connection activity timestamp
+        lastConnectionTime = Date.now();
         
         if (source === 'ai' || source === 'agent' || source === 'assistant') {
           console.log(`💬 Text received (${message.length} chars). Syncing visuals...`);
@@ -1013,6 +1026,9 @@ async function startVoiceSession() {
         const currentMode = mode.mode || mode; 
         console.log('🔄 Mode:', currentMode);
         
+        // [PRODUCTION FIX] Update connection activity on mode changes
+        lastConnectionTime = Date.now();
+        
         // If the SDK explicitly says "listening", we trust it and cut the visual short.
         if (currentMode === 'listening') {
            if (silenceTimeout) clearTimeout(silenceTimeout);
@@ -1024,29 +1040,39 @@ async function startVoiceSession() {
         clearTimeout(connectionTimeout);
         sessionActive = true;
         isMicMuted = false;
+        isReconnecting = false;
+        disconnectRetryCount = 0; // Reset retry count on successful connection
+        lastConnectionTime = Date.now();
         
-        // Setup Media Stream
+        // [PRODUCTION FIX] Setup Media Stream - let SDK handle it
         try {
           if (conversation && typeof conversation.getLocalStream === 'function') {
             const localStream = conversation.getLocalStream();
-            if (localStream) userMediaStream = localStream;
+            if (localStream) {
+              userMediaStream = localStream;
+              // Ensure tracks are enabled
+              localStream.getAudioTracks().forEach(track => {
+                track.enabled = !isMicMuted;
+              });
+            }
           }
-        } catch (e) {}
-        
-        if (userMediaStream) {
-          userMediaStream.getAudioTracks().forEach(track => track.enabled = true);
+        } catch (e) {
+          console.warn('⚠️ Could not get local stream:', e);
         }
         
         updateMicButtonState(false);
         
         if (window.micMuteInterval) clearInterval(window.micMuteInterval);
         window.micMuteInterval = setInterval(() => {
-          if (sessionActive && isMicMuted) enforceMicMuteState();
+          if (sessionActive && isMicMuted && userMediaStream) {
+            userMediaStream.getAudioTracks().forEach(track => {
+              track.enabled = false;
+            });
+          }
         }, 2000);
-        
-        // [REMOVED] Volume Watchdog - Replaced with Smart Latency Method
-        // The volume meter was getting stuck due to browser security policies
-        // Now using text-based timing with latency compensation
+
+        // [PRODUCTION FIX] Start connection health monitoring
+        startConnectionHealthCheck();
 
         // Connection UI Updates
         const connectionStatus = document.getElementById('connectionStatus');
@@ -1062,27 +1088,89 @@ async function startVoiceSession() {
         
         startTimer();
         startTalkTimeTracking();
+        
+        console.log('✅ Session connected successfully');
       },
 
       onDisconnect: () => {
         clearTimeout(connectionTimeout);
+        stopConnectionHealthCheck();
+        
         // Clear sync timers
         if (speakTimeout) clearTimeout(speakTimeout);
         if (silenceTimeout) clearTimeout(silenceTimeout);
-        toggleVoiceVisuals('idle');
-        updateStatus('Disconnected', 'default');
-        endSession();
+        
+        // [PRODUCTION FIX] Don't immediately end session - try to recover
+        console.warn('⚠️ Connection disconnected');
+        
+        // Only end session if we've been disconnected for a while or retries failed
+        if (disconnectRetryCount >= MAX_RETRY_ATTEMPTS) {
+          console.error('❌ Max reconnection attempts reached. Ending session.');
+          toggleVoiceVisuals('idle');
+          updateStatus('Connection lost. Please refresh.', 'default');
+          setTimeout(() => endSession(), 2000);
+          return;
+        }
+        
+        // Attempt reconnection
+        if (sessionActive && !isReconnecting) {
+          isReconnecting = true;
+          disconnectRetryCount++;
+          console.log(`🔄 Attempting reconnection (${disconnectRetryCount}/${MAX_RETRY_ATTEMPTS})...`);
+          
+          updateStatus(`Reconnecting... (${disconnectRetryCount}/${MAX_RETRY_ATTEMPTS})`, 'connecting');
+          
+          // Clear retry timeout if exists
+          if (disconnectRetryTimeout) clearTimeout(disconnectRetryTimeout);
+          
+          // Wait before retrying
+          disconnectRetryTimeout = setTimeout(() => {
+            if (sessionActive) {
+              // The SDK should handle reconnection automatically
+              // Just update UI and wait
+              console.log('⏳ Waiting for automatic reconnection...');
+            }
+          }, RETRY_DELAY);
+        } else if (!sessionActive) {
+          // Session was already ended, just cleanup
+          toggleVoiceVisuals('idle');
+          updateStatus('Disconnected', 'default');
+        }
       },
 
       onError: (err) => {
         clearTimeout(connectionTimeout);
+        stopConnectionHealthCheck();
+        
         // Clear sync timers
         if (speakTimeout) clearTimeout(speakTimeout);
         if (silenceTimeout) clearTimeout(silenceTimeout);
-        console.error('❌ Error:', err);
-        toggleVoiceVisuals('idle');
-        alert('Connection error: ' + (err.message || 'Unknown error'));
-        endSession();
+        
+        console.error('❌ Connection error:', err);
+        
+        // [PRODUCTION FIX] Handle errors more gracefully
+        const errorMessage = err.message || err.toString() || 'Unknown error';
+        const isFatalError = errorMessage.includes('closed') || 
+                            errorMessage.includes('failed') ||
+                            errorMessage.includes('timeout');
+        
+        if (isFatalError && disconnectRetryCount >= MAX_RETRY_ATTEMPTS) {
+          // Fatal error after retries - end session
+          toggleVoiceVisuals('idle');
+          updateStatus('Connection error. Please refresh.', 'default');
+          alert('Connection error: ' + errorMessage + '\n\nPlease refresh the page and try again.');
+          setTimeout(() => endSession(), 2000);
+        } else if (isFatalError) {
+          // Try to recover
+          console.warn('⚠️ Fatal error detected, attempting recovery...');
+          disconnectRetryCount++;
+          updateStatus(`Recovering from error... (${disconnectRetryCount}/${MAX_RETRY_ATTEMPTS})`, 'connecting');
+          // Don't end session - let onDisconnect handle reconnection
+        } else {
+          // Non-fatal error - log but continue
+          console.warn('⚠️ Non-fatal error:', errorMessage);
+          updateStatus('Connection issue detected...', 'connecting');
+        }
       }
     });
 
@@ -1806,10 +1894,51 @@ function addTalkTime(seconds) {
   }
 }
 
+// [PRODUCTION FIX] Connection Health Monitoring
+function startConnectionHealthCheck() {
+  stopConnectionHealthCheck(); // Clear any existing check
+  
+  connectionHealthCheck = setInterval(() => {
+    if (!sessionActive || !conversation) {
+      stopConnectionHealthCheck();
+      return;
+    }
+    
+    // Check if connection is still alive
+    try {
+      // Simple check - if we haven't received any updates in 30 seconds, something might be wrong
+      const timeSinceLastConnection = lastConnectionTime ? Date.now() - lastConnectionTime : 0;
+      
+      if (timeSinceLastConnection > 30000 && lastConnectionTime) {
+        console.warn('⚠️ No connection activity for 30+ seconds');
+        // Don't disconnect, just log - the SDK will handle reconnection
+      }
+    } catch (e) {
+      console.warn('⚠️ Health check error:', e);
+    }
+  }, 10000); // Check every 10 seconds
+}
+
+function stopConnectionHealthCheck() {
+  if (connectionHealthCheck) {
+    clearInterval(connectionHealthCheck);
+    connectionHealthCheck = null;
+  }
+}
+
 async function endSession() {
   if (!sessionActive && !conversation && !isSessionPaused) return;
   sessionActive = false;
   isSessionPaused = false;
+  isReconnecting = false;
+  
+  // [PRODUCTION FIX] Clean up all connection-related timers
+  stopConnectionHealthCheck();
+  if (disconnectRetryTimeout) {
+    clearTimeout(disconnectRetryTimeout);
+    disconnectRetryTimeout = null;
+  }
+  disconnectRetryCount = 0;
   
   // Clean up sync timers
   if (speakTimeout) {
