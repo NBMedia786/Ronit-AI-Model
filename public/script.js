@@ -1005,6 +1005,18 @@ async function startVoiceSession() {
         // tts block removed entirely - let Agent use its native, correct model
       },
 
+      // [VPS FIX] WebRTC Configuration for VPS/Server deployments
+      // This helps with NAT traversal and connection stability
+      iceServers: [
+        { urls: "stun:stun.l.google.com:19302" },
+        { urls: "stun:stun1.l.google.com:19302" },
+        { urls: "stun:stun2.l.google.com:19302" },
+        { urls: "stun:stun3.l.google.com:19302" },
+        { urls: "stun:stun4.l.google.com:19302" }
+      ],
+      transportPolicy: "all",
+      enableTCP: true,  // Enable TCP fallback for better reliability
+
       // 1. SMART LATENCY TRIGGER (The Alternate Fix)
       onMessage: ({ source, message }) => {
         const speaker = source === 'user' ? 'User' : 'Coach';
