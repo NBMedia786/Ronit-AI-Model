@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Sign Up - Ronit AI Coach</title>
+  
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <style>
+    .login-wrapper {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    .login-card {
+      background: white;
+      border-radius: 24px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+      padding: 48px 40px;
+      width: 100%;
+      max-width: 440px;
+      border: 1px solid rgba(226, 232, 240, 0.8);
+      text-align: center;
+    }
+
+    .login-logo {
+      width: 120px;
+      height: 120px;
+      margin: 0 auto 20px;
+    }
+
+    .login-logo .profile-img {
+      width: 100%;
+      height: 100%;
+      border-radius: 50%;
+      object-fit: cover;
+      border: 3px solid #0ea5e9;
+    }
+
+    h1 {
+      font-size: 2rem;
+      font-weight: 700;
+      color: #0f172a;
+      margin: 0 0 8px 0;
+    }
+
+    p {
+      color: #64748b;
+      margin: 0 0 32px 0;
+    }
+
+    /* Centered Google Button */
+    .google-signin-container {
+      margin-bottom: 24px;
+      display: flex;
+      justify-content: center;
+      width: 100%;
+    }
+
+    .login-link {
+      color: #64748b;
+      font-size: 0.9rem;
+    }
+
+    .login-link a {
+      color: #0ea5e9;
+      text-decoration: none;
+      font-weight: 600;
+    }
+
+    .error-message {
+      display: none;
+      background: #fee2e2;
+      color: #991b1b;
+      padding: 12px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      font-size: 0.9rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="login-wrapper">
+    <div class="login-card">
+      <div class="login-logo">
+        <img src="coach.jpg" alt="Ronit" class="profile-img">
+      </div>
+      <h1>Create Account</h1>
+      <p>Join Ronit AI Coach using your Google account</p>
+
+      <div id="signupError" class="error-message"></div>
+
+      <div class="google-signin-container">
+        <div id="google-signin-button"></div>
+      </div>
+      
+      <div class="login-link">
+        Already have an account? <a href="/login.html">Login</a>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let GOOGLE_CLIENT_ID = '';
+    
+    // 1. Fetch Config
+    async function loadGoogleClientId() {
+      try {
+        const response = await fetch('/config');
+        const config = await response.json();
+        if (config.googleClientId) {
+          GOOGLE_CLIENT_ID = config.googleClientId;
+          initializeGoogleSignIn();
+        }
+      } catch (error) {
+        console.error('Config Error:', error);
+      }
+    }
+    
+    // 2. Initialize Button
+    function initializeGoogleSignIn() {
+      if (typeof google === 'undefined' || !GOOGLE_CLIENT_ID) return;
+      
+      google.accounts.id.initialize({
+        client_id: GOOGLE_CLIENT_ID,
+        callback: handleGoogleSignUp
+      });
+      
+      google.accounts.id.renderButton(
+        document.getElementById('google-signin-button'),
+        { theme: 'outline', size: 'large', text: 'signup_with', width: '280' }
+      );
+    }
+    
+    // 3. Handle Sign Up (Send to Backend)
+    async function handleGoogleSignUp(response) {
+      try {
+        // Send raw credential to backend for server-side verification
+        const res = await fetch('/api/auth/google', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                credential: response.credential  // Send raw credential, not decoded
+            })
+        });
+        
+        const data = await res.json();
+        
+        if (data.ok && data.token) {
+            // Store app-generated JWT token
+            sessionStorage.setItem('authToken', data.token);
+            
+            sessionStorage.setItem('userEmail', data.email);
+            sessionStorage.setItem('userName', data.name || data.email.split('@')[0]);
+            sessionStorage.setItem('userTalktime', data.talktime.toString());
+            sessionStorage.setItem('isLoggedIn', 'true');
+            
+            window.location.href = '/';
+        } else {
+            const errorDiv = document.getElementById('signupError');
+            errorDiv.textContent = data.message || 'Signup failed. Please try again.';
+            errorDiv.style.display = 'block';
+        }
+      } catch (error) {
+        console.error('Error processing Google Sign-Up:', error);
+        const errorDiv = document.getElementById('signupError');
+        errorDiv.textContent = 'System error during signup. Please try again.';
+        errorDiv.style.display = 'block';
+      }
+    }
+    
+    window.addEventListener('load', loadGoogleClientId);
+  </script>
+</body>
+</html>

@@ -1,0 +1,58 @@
+# Caddyfile for Ronit AI Coach
+# This configuration ensures WebSocket support and proper proxying
+# Replace 'yourdomain.com' with your actual domain name
+
+yourdomain.com {
+    # Enable automatic HTTPS (Caddy handles this automatically)
+    encode zstd gzip
+    
+    # Reverse proxy to Flask app running on port 5000
+    reverse_proxy localhost:5000 {
+        # WebSocket support
+        header_up Connection {>Connection}
+        header_up Upgrade {>Upgrade}
+        
+        # Long timeout for WebSocket connections
+        transport http {
+            dial_timeout 10s
+            response_header_timeout 120s 
+            idle_timeout 120s
+        }
+        
+        # Forward proper headers
+        header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto {scheme}
+        header_up Host {host}
+        
+        # Health check
+        health_uri /healthz
+        health_interval 30s
+        health_timeout 5s
+        health_status 200
+    }
+    
+    # Static file serving (optional - Flask can also serve these)
+    # Uncomment if you want Caddy to serve static files directly
+    # @static {
+    #     path /static/*
+    # }
+    # handle @static {
+    #     root * /path/to/your/public
+    #     file_server
+    # }
+    
+    # Logging (optional - helps with debugging)
+    log {
+        output file /var/log/caddy/access.log
+        format json
+        level INFO
+    }
+}
+
+# Note: Caddy automatically:
+# - Obtains SSL certificates via Let's Encrypt
+# - Handles HTTP to HTTPS redirects
+# - Supports WebSocket upgrades automatically
+# - Provides DDoS protection
+

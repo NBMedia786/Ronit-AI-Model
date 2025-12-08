@@ -1,0 +1,25 @@
+{
+  "name": "Personal AI Coach",
+  "short_name": "AI Coach",
+  "description": "Voice-powered AI coaching assistant",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f0f9ff",
+  "theme_color": "#0ea5e9",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "coach.jpg",
+      "sizes": "192x192",
+      "type": "image/jpeg",
+      "purpose": "any maskable"
+    }
+  ],
+  "permissions": [
+    "microphone",
+    "audio-capture"
+  ],
+  "features": [
+    "microphone"
+  ]
+}
